@@ -7,6 +7,8 @@
 #include "task.h"
 #include "esp8266.h"
 
+#include "plc.h"
+
 #define SCL_PIN 5
 #define SDA_PIN 4
 
@@ -27,14 +29,19 @@ void blinkTask(void *pvParameters)
     }
 }
 
-void i2cTestTask(void *pvParameters)
+void plcTask(void *pvParameters)
 {
+    // Just init
+    initPLCdevice(120);
+
     for (;;)
     {
- 
+    
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
+
+
 
 void user_init(void)
 {
