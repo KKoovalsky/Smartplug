@@ -31,12 +31,16 @@ void blinkTask(void *pvParameters)
 
 void plcTask(void *pvParameters)
 {
-    // Just init
-    initPLCdevice(120);
+    int i = 0;
 
     for (;;)
     {
-    
+        printf("%d\n", i++);
+        if(i == 10)
+        {
+            printf("Initializing PLC at address %d\n", PLC_WRITE_ADDR);
+            initPLCdevice(120);
+        }
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
@@ -49,5 +53,5 @@ void user_init(void)
     i2c_init(SCL_PIN, SDA_PIN);
     printf("SDK version:%s\n", sdk_system_get_sdk_version());
     xTaskCreate(blinkTask, "blinkTask", 256, NULL, 2, NULL);
-    xTaskCreate(i2cTestTask, "i2cTestTask", 256, NULL, 3, NULL);
-}
+    xTaskCreate(plcTask, "i2cTestTask", 256, NULL, 3, NULL);
+}   

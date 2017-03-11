@@ -6,6 +6,10 @@
 #include "espressif/esp_common.h"
 #include "esp8266.h"
 
+#include "esp/uart.h"
+
+#define DEBUG_PLC
+
 uint8_t readPLCregister(uint8_t reg)
 {
 	uint8_t buf;
@@ -16,6 +20,12 @@ uint8_t readPLCregister(uint8_t reg)
 			break;
 		attemptCnt--;
 	}
+
+#ifdef DEBUG_PLC
+    if(!attemptCnt)
+        printf("Read PLC register failed\n\r");
+#endif
+
 	return buf;
 }
 
@@ -28,6 +38,11 @@ void readPLCregisters(uint8_t reg, uint8_t *buf, uint32_t len)
 			break;
 		attemptCnt--;
 	}
+
+#ifdef DEBUG_PLC
+    if(!attemptCnt)
+        printf("Read PLC registers failed\n\r");
+#endif
 }
 
 void writePLCregister(uint8_t reg, uint8_t val)
@@ -41,6 +56,11 @@ void writePLCregister(uint8_t reg, uint8_t val)
 			break;
 		attemptCnt--;
 	}
+
+#ifdef DEBUG_PLC
+    if(!attemptCnt)
+        printf("Write PLC register failed\n\r");
+#endif
 } 
 
 void writePLCregisters(uint8_t reg, uint8_t *buf, uint8_t len)
@@ -54,6 +74,11 @@ void writePLCregisters(uint8_t reg, uint8_t *buf, uint8_t len)
 				break;
 		attemptCnt--;
 	}
+
+#ifdef DEBUG_PLC
+    if(!attemptCnt)
+        printf("Write PLC registers failed\n\r");
+#endif
 }
 
 void setPLCtxAddrType(uint8_t txSAtype, uint8_t txDAtype)
