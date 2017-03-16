@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no">
+    <link rel="stylesheet" type="text/css" href="css/style.css">
+    <link rel="shortcut icon" href="img/favicon.png">
+    <title>HTTP Server</title>
+</head>
+
+<body>
+    <div class="main">
+        <div align="center">
+            <h1>Change configuration</h1>
+        </div>
+        <hr width="60%" color="gray">
+        <div class="sub" align="center">
+            <h2>Broker mode</h2>
+            <table class="table" cellspacing="10">
+                <tr>
+                    <td><b>Target SSID:</b></td>
+                    <td><input type="text" name="ssid" id="ssid"></td>
+                </tr>
+                <tr>
+                    <td><b>Target password:</b></td>
+                    <td><input type="text" name="password" id="password"></td>
+                </tr>
+            </table>
+            <input type="button" name="ok-button" id="wifi-opts" value="Set broker mode" onclick="setBrokerMode()">
+        </div>
+        <hr width="60%" color="gray">
+        <div class="sub" align="center">
+            <h2>Client mode</h2>
+            <table class="table" cellspacing="10">
+                <tr>
+                    <td><b>Broker PLC PHY Address:</b></td>
+                    <td><input type="text" name="plc_phy_addr" id="plc_phy_addr"></td>
+                </tr>
+            </table>
+            <input type="button" name="ok-button" id="plc-opts" value="Set client mode" onclick="setClientMode()">
+        </div>
+        <hr width="60%" color="gray">
+        <div class="sub" align="center" id="status_box"></div>
+    </div>
+
+    <script type="text/javascript"></script>
+    <script>
+        var ws;
+        var retries;
+
+        window.onload = function() {
+            wsOpen();
+        }
+
+        function setMsg(text) {
+            sbox = document.getElementById('status_box');
+            sbox.innerHTML = text;
+            console.log(text);
+        }
+
+        function onMessage(evt) {
+            retries = 0;
+            var dv = new DataView(evt.data);
+            setMsg(dv);
+        }
+
+        function wsOpen() {
+            if (ws === undefined || ws.readyState != 0) {
+                if (retries)
+                    setMsg("Problems occured while connecting to device, retrying...");
+                ws = new WebSocket("ws://" + location.host);
+                ws.binaryType = 'arraybuffer';
+                ws.onopen = function(evt) {
+                    retries = 0;
+                    setMsg("Ready to set configuration.");
+                };
+                ws.onerror = function(evt) {
+                    setMsg("Error connecting to device...");
+                };
+                ws.onmessage = function(evt) {
+                    onMessage(evt);
+                };
+                retries = 0;
+            }
+        }
+
+        function wsWrite(data) {
+            if (ws.readyState == 3 || retries++ > 5)
+                wsOpen();
+            if (ws.readyState == 1)
+                ws.send(data);
+        }
+
+        function setBrokerMode() {
+            var wifi = new Object();
+            wifi.ssid = document.getElementById('ssid').value;
+            wifi.password = document.getElementById('password').value;
+            var jsonString = JSON.stringify(wifi);
+            sbox = document.getElementById('status_box');
+            sbox.innerHTML = jsonString;
+            wsWrite(jsonString);
+        }
+
+        function setClientMode() {
+            var plcClient = new Object();
+            plcClient.phyaddr = document.getElementById('plc_phy_addr').value;
+            var jsonString = JSON.stringify(plcClient);
+            sbox = document.getElementById('status_box');
+            sbox.innerHTML = jsonString;
+            wsWrite(jsonString);
+        }
+    </script>
+</body>
+
+</html>

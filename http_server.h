@@ -8,12 +8,6 @@
 
 #define LED_PIN 2
 
-enum {
-    SSI_UPTIME,
-    SSI_FREE_HEAP,
-    SSI_LED_STATE
-};
-
 void httpd_task(void *pvParameters);
 
 #endif
