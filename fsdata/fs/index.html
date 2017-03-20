@@ -69,7 +69,8 @@
             if (ws === undefined || ws.readyState != 0) {
                 if (retries)
                     setMsg("Problems occured while connecting to device, retrying...");
-                ws = new WebSocket("ws://" + location.host);
+                var uri = "/set-config";
+                ws = new WebSocket("ws://" + location.host + uri);
                 ws.binaryType = 'arraybuffer';
                 ws.onopen = function(evt) {
                     retries = 0;

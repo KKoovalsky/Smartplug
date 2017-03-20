@@ -143,6 +143,10 @@
 #define MAX_I2C_ATTEMPTS 5
 
 #include <stdint.h>
+#include "FreeRTOS.h"
+#include "task.h"
+
+extern TaskHandle_t xPLCTask;
 
 uint8_t readPLCregister(uint8_t reg);
 void readPLCregisters(uint8_t reg, uint8_t *buf, uint32_t len);
@@ -156,6 +160,9 @@ void setPLCnodeGA(uint8_t groupAddress);
 void getPLCrxAddrType(uint8_t *rxSAtype, uint8_t *rxDAtype);
 void getPLCrxSA(uint8_t *rxSA);
 void readPLCrxPacket(uint8_t *rxCommand, uint8_t *rxData, uint8_t *rxDataLength);
+uint8_t readPLCintRegister(void);
 void initPLCdevice(uint8_t nodeLA);
+
+void plcTask(void *pvParameters);
 
 #endif

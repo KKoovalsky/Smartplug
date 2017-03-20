@@ -30,7 +30,6 @@
 // I2C driver for ESP8266 written for use with esp-open-rtos
 // Based on https://en.wikipedia.org/wiki/I²C#Example_of_bit-banging_the_I.C2.B2C_Master_protocol
 
-// With calling overhead, we end up at ~100kbit/s
 #define CLK_HALF_PERIOD_US (100)
 
 #define CLK_STRETCH  (10)

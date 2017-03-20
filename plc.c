@@ -5,78 +5,83 @@
 #include "i2c.h"
 #include "espressif/esp_common.h"
 #include "esp8266.h"
-
 #include "esp/uart.h"
 
 #define DEBUG_PLC
+#define HOST_INT_PIN 13
+
+TaskHandle_t xPLCTask;
+
+static void hostIntPinHandler(uint8_t pin);
 
 uint8_t readPLCregister(uint8_t reg)
 {
-	uint8_t buf;
-	uint32_t attemptCnt = MAX_I2C_ATTEMPTS;
-	while(attemptCnt)
-	{
-		if(i2c_slave_read(PLC_WRITE_ADDR, reg, &buf, 1))
-			break;
-		attemptCnt--;
-	}
+    uint8_t buf;
+    uint32_t attemptCnt = MAX_I2C_ATTEMPTS;
+    while (attemptCnt)
+    {
+        if (i2c_slave_read(PLC_WRITE_ADDR, reg, &buf, 1))
+            break;
+        attemptCnt--;
+    }
 
 #ifdef DEBUG_PLC
-    if(!attemptCnt)
+    if (!attemptCnt)
         printf("Read PLC register failed\n\r");
 #endif
 
-	return buf;
+    return buf;
 }
 
 void readPLCregisters(uint8_t reg, uint8_t *buf, uint32_t len)
 {
-	uint32_t attemptCnt = MAX_I2C_ATTEMPTS;
-	while(attemptCnt)
-	{
-		if(i2c_slave_read(PLC_WRITE_ADDR, reg, buf, len))
-			break;
-		attemptCnt--;
-	}
+    uint32_t attemptCnt = MAX_I2C_ATTEMPTS;
+    while (attemptCnt)
+    {
+        if (i2c_slave_read(PLC_WRITE_ADDR, reg, buf, len))
+            break;
+        attemptCnt--;
+    }
 
 #ifdef DEBUG_PLC
-    if(!attemptCnt)
+    if (!attemptCnt)
         printf("Read PLC registers failed\n\r");
 #endif
 }
 
 void writePLCregister(uint8_t reg, uint8_t val)
 {
-	uint8_t data[2];
-	data[0] = reg; data[1] = val;
-	uint32_t attemptCnt = MAX_I2C_ATTEMPTS;
-	while(attemptCnt)
-	{
-		if(i2c_slave_write(PLC_WRITE_ADDR, data, 2))
-			break;
-		attemptCnt--;
-	}
+    uint8_t data[2];
+    data[0] = reg;
+    data[1] = val;
+    uint32_t attemptCnt = MAX_I2C_ATTEMPTS;
+    while (attemptCnt)
+    {
+        if (i2c_slave_write(PLC_WRITE_ADDR, data, 2))
+            break;
+        attemptCnt--;
+    }
 
 #ifdef DEBUG_PLC
-    if(!attemptCnt)
+    if (!attemptCnt)
         printf("Write PLC register failed\n\r");
 #endif
-} 
+}
 
 void writePLCregisters(uint8_t reg, uint8_t *buf, uint8_t len)
 {
-	uint8_t regAddr = reg;
-	uint32_t attemptCnt = MAX_I2C_ATTEMPTS;
-	while(attemptCnt)
-	{
-		if(i2c_slave_write(PLC_WRITE_ADDR, &regAddr, 1))
-			if(i2c_slave_write(PLC_WRITE_ADDR, buf, len))
-				break;
-		attemptCnt--;
-	}
+    uint8_t regAddr = reg;
+    uint32_t attemptCnt = MAX_I2C_ATTEMPTS;
+    while (attemptCnt)
+    {
+        if (i2c_slave_write(PLC_WRITE_ADDR, &regAddr, 1))
+            if (i2c_slave_write(PLC_WRITE_ADDR, buf, len))
+                break;
+        attemptCnt--;
+    }
 
 #ifdef DEBUG_PLC
-    if(!attemptCnt)
+    if (!attemptCnt)
         printf("Write PLC registers failed\n\r");
 #endif
 }
@@ -100,11 +105,11 @@ void setPLCtxDA(uint8_t txDAtype, volatile uint8_t *txDA)
     {
     case TX_DA_TYPE_LOGICAL:
     case TX_DA_TYPE_GROUP:
-		writePLCregister(TX_DA_REG, (uint8_t) *txDA);
-		break;
+        writePLCregister(TX_DA_REG, (uint8_t)*txDA);
+        break;
     case TX_DA_TYPE_PHYSICAL:
-		writePLCregisters(TX_DA_REG, (uint8_t *) txDA, 8);
-		break;
+        writePLCregisters(TX_DA_REG, (uint8_t *)txDA, 8);
+        break;
     }
 }
 
@@ -150,7 +155,7 @@ void readPLCrxPacket(uint8_t *rxCommand, uint8_t *rxData, uint8_t *rxDataLength)
     //	Odczytanie bieżącej wartości rejestru RX_MESSAGE_INFO_REG i ustalenie rozmiaru otrzymanej wiadomości
     *rxDataLength = readPLCregister(RX_MESSAGE_INFO_REG) & 0x1F; // 0...31
     *rxCommand = readPLCregister(RX_COMMAND_ID_REG);
- 	   //	Wczytanie do tablicy rxData będącej argumentem funkcji wszystkich otrzymanych danych
+    //	Wczytanie do tablicy rxData będącej argumentem funkcji wszystkich otrzymanych danych
     readPLCregisters(RX_DATA_REG, rxData, *rxDataLength);
     //	Aby skasować flagi STATUS_VALUE_CHANGE, STATUS_RX_PACKET_DROPPED
     //	i STATUS_RX_DATA_AVAIBLE w rejestrze INTERRUPT_STATUS_REG musimy
@@ -160,8 +165,25 @@ void readPLCrxPacket(uint8_t *rxCommand, uint8_t *rxData, uint8_t *rxDataLength)
     writePLCregister(RX_MESSAGE_INFO_REG, infoRegister & ~NEW_PACKET_RECEIVED);
 }
 
+uint8_t readPLCintRegister(void)
+{
+    register uint8_t intStatusReg, intEnableReg;
+    //  Odczyt rejestru statusu przerwań PLC by ustalić rodzaj zdarzenia
+    //  jakie zostało zgłoszone
+    intStatusReg = readPLCregister(INTERRUPT_STATUS_REG);
+    //  Po odczycie powyższego rejestru należy wyzerować bit INT_CLEAR
+    //  w rejestrze INTERRUPT_ENABLE_REG (datasheet, page 7.)
+    intEnableReg = readPLCregister(INTERRUPT_ENABLE_REG) & ~INT_CLEAR_PLC;
+    writePLCregister(INTERRUPT_ENABLE_REG, intEnableReg);
+    return intStatusReg;
+}
+
 void initPLCdevice(uint8_t nodeLA)
 {
+    //  Konfiguracja pinu HOST_INT
+    gpio_enable(HOST_INT_PIN, GPIO_INPUT);
+    gpio_set_interrupt(HOST_INT_PIN, GPIO_INTTYPE_EDGE_NEG, hostIntPinHandler);
+
     //	Uruchomienie i podstawowa konfiguracja modemu PLC
     writePLCregister(PLC_MODE_REG, TX_ENABLE | RX_ENABLE | RX_OVERRIDE | ENABLE_BIU | CHECK_DA | VERIFY_PACKET_CRC8);
     //	Ustawienie poziomu sygnału dla mechanizmu CSMA (Carrier Sense Multimaster Access)
@@ -171,7 +193,7 @@ void initPLCdevice(uint8_t nodeLA)
     writePLCregister(MODEM_CONFIG_REG, MODEM_BPS_2400 | MODEM_FSK_BAND_DEV_3KHZ);
     //	Uruchomienie przerwań dla wybranych zdarzeń (aktywny poziom niski na wyprowadzeniu HOST_INT)
     writePLCregister(INTERRUPT_ENABLE_REG, INT_POLARITY_LOW | INT_UNABLE_TO_TX |
-		INT_TX_NO_ACK | INT_TX_NO_RESP | INT_RX_DATA_AVAILABLE | INT_TX_DATA_SENT);
+                                               INT_TX_NO_ACK | INT_TX_NO_RESP | INT_RX_DATA_AVAILABLE | INT_TX_DATA_SENT);
     //	Ustawienie trybu potwierdzania pakietów danych oraz liczby prób
     //	transmisji = 5 (domyślne logiczne typy adresów SA i DA)
     writePLCregister(TX_CONFIG_REG, TX_SERVICE_ACKNOWLEDGED | 0x05);
@@ -180,8 +202,37 @@ void initPLCdevice(uint8_t nodeLA)
     //	Ustawienie czułości dla modułu odbiornika PLC
     writePLCregister(RX_GAIN_REG, RX_GAIN_LEVEL_250UV);
     setPLCnodeLA(nodeLA); //	Ustawienie numeru LA modemu PLC
-	//	Ustawienie adresu Grupowego modemu PLC
+                          //	Ustawienie adresu Grupowego modemu PLC
     setPLCnodeGA(MASTER_GROUP_ADDR);
+}
 
-	// TODO: Set configuration of pin interrupt 
+static void hostIntPinHandler(uint8_t pin)
+{
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    vTaskNotifyGiveFromISR(xPLCTask, &xHigherPriorityTaskWoken);
+    portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
+}
+
+void plcTask(void *pvParameters)
+{
+    vTaskDelay(pdMS_TO_TICKS(20 * 1000));
+    printf("Initializing PLC at address %d\n", PLC_WRITE_ADDR);
+    initPLCdevice(120);
+
+    // Read Physical Address
+    uint8_t phyAddr[8];
+    readPLCregisters(0x08, phyAddr, 8);
+    printf("%d %d %d %d %d %d %d %d\n\r", phyAddr[0], phyAddr[1], phyAddr[2], phyAddr[3], phyAddr[4],
+        phyAddr[5], phyAddr[6], phyAddr[7]);
+
+    uint8_t data[5];
+    readPLCregisters(0x00, data, 5);
+    printf("%d %d %d %d %d\n\r", data[0],  data[1],  data[2],  data[3],  data[4]);
+
+    for (;;)
+    {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        unsigned int temp = readPLCintRegister();
+        printf("Got some data from PLC: %d\n\r", temp);
+    }
 }

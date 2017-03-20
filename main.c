@@ -15,8 +15,6 @@
 #define SCL_PIN 5
 #define SDA_PIN 4
 
-#define HOST_INT_PIN 9
-
 const int gpio = 2;
 
 /*  This task uses the high level GPIO API (esp_gpio.h) to blink an LED.
@@ -31,18 +29,6 @@ void blinkTask(void *pvParameters)
         vTaskDelay(1000 / portTICK_PERIOD_MS);
         gpio_write(gpio, 0);
         vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
-}
-
-void plcTask(void *pvParameters)
-{
-    vTaskDelay(pdMS_TO_TICKS(10 * 1000));
-    printf("Initializing PLC at address %d\n", PLC_WRITE_ADDR);
-    initPLCdevice(120);
-    for (;;)
-    {
-
-        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
 
@@ -76,6 +62,6 @@ void user_init(void)
     dhcpserver_start(&first_client_ip, 4);
 
     xTaskCreate(blinkTask, "blinkTask", 256, NULL, 2, NULL);
-    xTaskCreate(plcTask, "i2cTestTask", 256, NULL, 3, NULL);
+    xTaskCreate(plcTask, "i2cTestTask", 256, NULL, 3, &xPLCTask);
     xTaskCreate(httpd_task, "HTTP Daemon", 128, NULL, 2, NULL);
 }
