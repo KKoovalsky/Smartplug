@@ -77,9 +77,55 @@
             <td><input type="button" name="13-b" id="13-b" value="Send" onclick="sendCommand(this.id)"></td>
         </tr>
     </table>
-
+    <div class="sub" align="center" id="status_box"></div>
     <script type="text/javascript"></script>
     <script>
+        var ws;
+        var retries;
+
+        window.onload = function() {
+            wsOpen();
+        }
+
+        function setMsg(text) {
+            sbox = document.getElementById('status_box');
+            sbox.innerHTML = text;
+            console.log(text);
+        }
+
+        function onMessage(evt) {
+            retries = 0;
+            setMsg(evt.data);
+        }
+
+        function wsOpen() {
+            if (ws === undefined || ws.readyState != 0) {
+                if (retries)
+                    setMsg("Problems occured while connecting to device, retrying...");
+                var uri = "/plc-function";
+                ws = new WebSocket("ws://" + location.host + uri);
+                ws.binaryType = 'arraybuffer';
+                ws.onopen = function(evt) {
+                    retries = 0;
+                    setMsg("Ready to set configuration.");
+                };
+                ws.onerror = function(evt) {
+                    setMsg("Error connecting to device...");
+                };
+                ws.onmessage = function(evt) {
+                    onMessage(evt);
+                };
+                retries = 0;
+            }
+        }
+
+        function wsWrite(data) {
+            if (ws.readyState == 3 || retries++ > 5)
+                wsOpen();
+            if (ws.readyState == 1)
+                ws.send(data);
+        }
+
         function sendCommand(id) {
             var command = new Object();
             var comm_id = id.substr(0, id.indexOf('-'));
@@ -87,8 +133,7 @@
             command.data = comm_input.parentElement.previousElementSibling.innerHTML;
             command.value = comm_input.value.split(',');
             var jsonString = JSON.stringify(command);
-            console.log(command.data);
-            console.log(command.value);
+            wsWrite(jsonString);
             console.log(jsonString);
         }
     </script>

@@ -38,23 +38,25 @@ const char *plcFunctionNames[] =
 static void JSONAddInt(char *buf, int *len, uint32_t val)
 {
     sprintf(buf + *len, "\"%d\"", val);
-    *len = strlen(buf + *len);
+    *len = strlen(buf);
 }
 
 static void JSONAddString(char *buf, int *len, char *str)
 {
     sprintf(buf + *len, "%s", str);
-    *len = strlen(buf + *len);
+    *len = strlen(buf);
 }
 
 static void JSONAddByteArray(char *buf, int *len, uint8_t *array, int num)
 {
+    if(!num) return;
     int length = *len;
     buf[length++] = '[';
+    printf("%.*s\n", length, buf);
     for (int i = 0; i < num; i++)
     {
         sprintf(buf + length, "\"%d\",", (uint32_t)array[i] & 0x000000FF);
-        length = strlen(buf + length);
+        length = strlen(buf);
     }
     // Last comma should be overwritten.
     buf[length - 1] = ']';
@@ -93,11 +95,15 @@ void plcFunction(char *data, u16_t len, struct tcp_pcb *pcb)
 
     char *functionName = data + t[2].start;
     char functionNameLen = t[2].end - t[2].start;
+
+    printf("%.*s\n", functionNameLen, functionName);
+
     if (!strncmp("readPLCregister", functionName, functionNameLen))
     {
         uint32_t reg = getRegFromInput(data + t[5].start, data + t[5].end);
         if (reg == -1)
             return;
+        printf("%d\n", reg);
         uint32_t res = (uint32_t)readPLCregister((uint8_t)reg);
         JSONAddInt(txBuffer, &txBufferLen, res);
     }
@@ -109,6 +115,7 @@ void plcFunction(char *data, u16_t len, struct tcp_pcb *pcb)
         uint32_t num = getRegFromInput(data + t[6].start, data + t[6].end);
         if (num == -1)
             return;
+        printf("%d %d\n", reg, num);
         uint8_t buffer[32];
         readPLCregisters(reg, buffer, num);
         JSONAddByteArray(txBuffer, &txBufferLen, buffer, num);
@@ -121,6 +128,7 @@ void plcFunction(char *data, u16_t len, struct tcp_pcb *pcb)
         uint32_t val = getRegFromInput(data + t[6].start, data + t[6].end);
         if (val == -1)
             return;
+        printf("%d %d\n", reg, val);
         writePLCregister((uint8_t)reg, (uint8_t)val);
         return;
     }
@@ -138,6 +146,9 @@ void plcFunction(char *data, u16_t len, struct tcp_pcb *pcb)
                 return;
             buffer[j++] = (uint8_t)temp;
         }
+        for(int i = 0 ; i < j; i ++)
+            printf("%d ", buffer[i]);
+        printf("\n");
         writePLCregisters((uint8_t)reg, buffer, (uint8_t)j);
         return;
     }
@@ -149,6 +160,7 @@ void plcFunction(char *data, u16_t len, struct tcp_pcb *pcb)
         uint32_t val = getRegFromInput(data + t[6].start, data + t[6].end);
         if (val == -1)
             return;
+        printf("%d %d\n", reg, val);
         setPLCtxAddrType((uint8_t)reg, (uint8_t)val);
         return;
     }
@@ -166,6 +178,9 @@ void plcFunction(char *data, u16_t len, struct tcp_pcb *pcb)
                 return;
             buffer[j++] = (uint8_t)temp;
         }
+        for(int i = 0 ; i < j; i ++)
+            printf("%d ", buffer[i]);
+        printf("\n");
         setPLCtxDA((uint8_t)reg, buffer);
         return;
     }
@@ -174,6 +189,7 @@ void plcFunction(char *data, u16_t len, struct tcp_pcb *pcb)
         uint32_t reg = getRegFromInput(data + t[5].start, data + t[5].end);
         if (reg == -1)
             return;
+        printf("%d\n", reg);
         setPLCnodeLA((uint8_t)reg);
         return;
     }
@@ -182,6 +198,7 @@ void plcFunction(char *data, u16_t len, struct tcp_pcb *pcb)
         uint32_t reg = getRegFromInput(data + t[5].start, data + t[5].end);
         if (reg == -1)
             return;
+        printf("%d\n", reg);
         setPLCnodeGA((uint8_t)reg);
         return;
     }
@@ -213,6 +230,7 @@ void plcFunction(char *data, u16_t len, struct tcp_pcb *pcb)
         uint32_t reg = getRegFromInput(data + t[5].start, data + t[5].end);
         if (reg == -1)
             return;
+        printf("%d\n", reg);
         initPLCdevice((uint8_t) reg);
         return;
     }
@@ -222,7 +240,8 @@ void plcFunction(char *data, u16_t len, struct tcp_pcb *pcb)
     }
 
     JSONAddString(txBuffer, &txBufferLen, "}");
-    websocket_write(pcb, (uint8_t*) txBuffer, txBufferLen, WS_BIN_MODE);
+    websocket_write(pcb, (uint8_t*) txBuffer, txBufferLen, WS_TEXT_MODE);
+    printf("%s\n", txBuffer);
 }
 
 char *index_cgi_handler(int iIndex, int iNumParams, char *pcParam[], char *pcValue[])

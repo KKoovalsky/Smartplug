@@ -221,13 +221,9 @@ void plcTask(void *pvParameters)
 
     // Read Physical Address
     uint8_t phyAddr[8];
-    readPLCregisters(0x08, phyAddr, 8);
+    readPLCregisters(0x6A, phyAddr, 8);
     printf("%d %d %d %d %d %d %d %d\n\r", phyAddr[0], phyAddr[1], phyAddr[2], phyAddr[3], phyAddr[4],
         phyAddr[5], phyAddr[6], phyAddr[7]);
-
-    uint8_t data[5];
-    readPLCregisters(0x00, data, 5);
-    printf("%d %d %d %d %d\n\r", data[0],  data[1],  data[2],  data[3],  data[4]);
 
     for (;;)
     {
