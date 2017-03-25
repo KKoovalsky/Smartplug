@@ -6,10 +6,12 @@
 #include <stdlib.h>
 #include <FreeRTOS.h>
 #include <task.h>
+#include "queue.h"
 #include <httpd/httpd.h>
 #include "http_server.h"
 #include "jsmn.h"
 #include "plc.h"
+#include "spiffs_local.h"
 
 typedef enum {
     NONE,
@@ -49,7 +51,8 @@ static void JSONAddString(char *buf, int *len, char *str)
 
 static void JSONAddByteArray(char *buf, int *len, uint8_t *array, int num)
 {
-    if(!num) return;
+    if (!num)
+        return;
     int length = *len;
     buf[length++] = '[';
     printf("%.*s\n", length, buf);
@@ -74,6 +77,67 @@ static uint32_t getRegFromInput(char *start, char *end)
         return -1;
     }
     return temp;
+}
+
+void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
+{
+    char txBuffer[32];
+    int txBufferLen = 0;
+
+    jsmn_parser jsmnParser;
+    jsmntok_t t[8];
+    jsmn_init(&jsmnParser);
+    int r = jsmn_parse(&jsmnParser, data, len, t, sizeof(t) / sizeof(t[0]));
+
+    if (r < 0)
+    {
+        printf("JSON Parsing failed\n");
+        return;
+    }
+
+    JSONAddString(txBuffer, &txBufferLen, "{\"data\":");
+
+    char *configStr = data + t[1].start;
+    int configStrLen = t[1].end - t[1].start;
+
+    PermConfData_s configData;
+
+    printf("%.*s\n", configStrLen, configStr);
+
+    if (!strncmp(configStr, "ssid", configStrLen))
+    {
+        char *SSID = data + t[2].start;
+        int SSIDStrLen = t[2].end - t[2].start;
+        char *password = data + t[4].start;
+        int passwordLen = t[4].end - t[4].start;
+        configData.SSID = (char *)pvPortMalloc(sizeof(char) * (SSIDStrLen + 1));
+        configData.password = (char *)pvPortMalloc(sizeof(char) * (passwordLen + 1));
+        memcpy(configData.SSID, SSID, SSIDStrLen);
+        memcpy(configData.password, password, passwordLen);
+        configData.SSID[SSIDStrLen] = configData.password[passwordLen] = '\0';
+
+        printf("%s %s\n", configData.SSID, configData.password);
+
+        configData.mode = SPIFFS_WRITE_WIFI_CONF;
+        xQueueSend(xSPIFFSQueue, &configData, 0);
+    }
+    else if (!strncmp(configStr, "phyaddr", configStrLen))
+    {
+        char *phyAddr = data + t[2].start;
+        int phyAddrLen = t[2].end - t[2].start;
+        configData.PLCPhyAddr = (char *)pvPortMalloc(sizeof(char) * (phyAddrLen + 1));
+        memcpy(configData.PLCPhyAddr, phyAddr, phyAddrLen);
+        configData.PLCPhyAddr[phyAddrLen] = '\0';
+
+        printf("%s\n", configData.PLCPhyAddr);
+
+        configData.mode = SPIFFS_WRITE_PLC_CONF;
+        xQueueSend(xSPIFFSQueue, &configData, 0);
+    }
+    else
+    {
+        printf("Undefined config command\n");
+    }
 }
 
 void plcFunction(char *data, u16_t len, struct tcp_pcb *pcb)
@@ -146,7 +210,7 @@ void plcFunction(char *data, u16_t len, struct tcp_pcb *pcb)
                 return;
             buffer[j++] = (uint8_t)temp;
         }
-        for(int i = 0 ; i < j; i ++)
+        for (int i = 0; i < j; i++)
             printf("%d ", buffer[i]);
         printf("\n");
         writePLCregisters((uint8_t)reg, buffer, (uint8_t)j);
@@ -178,7 +242,7 @@ void plcFunction(char *data, u16_t len, struct tcp_pcb *pcb)
                 return;
             buffer[j++] = (uint8_t)temp;
         }
-        for(int i = 0 ; i < j; i ++)
+        for (int i = 0; i < j; i++)
             printf("%d ", buffer[i]);
         printf("\n");
         setPLCtxDA((uint8_t)reg, buffer);
@@ -231,7 +295,7 @@ void plcFunction(char *data, u16_t len, struct tcp_pcb *pcb)
         if (reg == -1)
             return;
         printf("%d\n", reg);
-        initPLCdevice((uint8_t) reg);
+        initPLCdevice((uint8_t)reg);
         return;
     }
     else
@@ -240,7 +304,7 @@ void plcFunction(char *data, u16_t len, struct tcp_pcb *pcb)
     }
 
     JSONAddString(txBuffer, &txBufferLen, "}");
-    websocket_write(pcb, (uint8_t*) txBuffer, txBufferLen, WS_TEXT_MODE);
+    websocket_write(pcb, (uint8_t *)txBuffer, txBufferLen, WS_TEXT_MODE);
     printf("%s\n", txBuffer);
 }
 
@@ -265,6 +329,7 @@ void websocket_cb(struct tcp_pcb *pcb, uint8_t *data, u16_t data_len, uint8_t mo
 
     if (websocketClbkUse == SET_CONFIG)
     {
+        setConfig((char *)data, data_len, pcb);
     }
     else if (websocketClbkUse == PLC_FUNCTION)
     {
@@ -283,6 +348,9 @@ void websocket_cb(struct tcp_pcb *pcb, uint8_t *data, u16_t data_len, uint8_t mo
 void websocket_open_cb(struct tcp_pcb *pcb, const char *uri)
 {
     printf("WS URI: %s\n", uri);
+
+    checkFileContent();
+
     if (!strcmp("/set-config", uri))
     {
         websocketClbkUse = SET_CONFIG;
@@ -304,8 +372,7 @@ void httpd_task(void *pvParameters)
 {
     tCGI pCGIs[] = {
         {"/index", (tCGIHandler)index_cgi_handler},
-        {"/plc", (tCGIHandler)plc_cgi_handler}
-    };
+        {"/plc", (tCGIHandler)plc_cgi_handler}};
 
     /* register handlers and start the server */
     http_set_cgi_handlers(pCGIs, sizeof(pCGIs) / sizeof(pCGIs[0]));

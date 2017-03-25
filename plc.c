@@ -217,7 +217,7 @@ void plcTask(void *pvParameters)
 {
     vTaskDelay(pdMS_TO_TICKS(20 * 1000));
     printf("Initializing PLC at address %d\n", PLC_WRITE_ADDR);
-    initPLCdevice(120);
+    initPLCdevice(121);
 
     // Read Physical Address
     uint8_t phyAddr[8];

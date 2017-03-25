@@ -11,6 +11,7 @@
 #include <dhcpserver.h>
 
 #include "plc.h"
+#include "spiffs_local.h"
 
 #define SCL_PIN 5
 #define SDA_PIN 4
@@ -61,7 +62,10 @@ void user_init(void)
     IP4_ADDR(&first_client_ip, 192, 168, 1, 2);
     dhcpserver_start(&first_client_ip, 4);
 
-    xTaskCreate(blinkTask, "blinkTask", 256, NULL, 2, NULL);
-    xTaskCreate(plcTask, "i2cTestTask", 256, NULL, 3, &xPLCTask);
+    xSPIFFSQueue = xQueueCreate(1, sizeof(PermConfData_s));
+
+    xTaskCreate(blinkTask, "Blink", 256, NULL, 2, NULL);
+    xTaskCreate(plcTask, "PLC", 256, NULL, 3, &xPLCTask);
     xTaskCreate(httpd_task, "HTTP Daemon", 128, NULL, 2, NULL);
+    xTaskCreate(spiffsTask, "SPIFFS", 512, NULL, 2, NULL);
 }

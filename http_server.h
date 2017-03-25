@@ -4,7 +4,7 @@
 #include <FreeRTOS.h>
 
 #define WIFI_PASS "huehuehue"
-#define WIFI_SSID "I_TAK_NIE_MAM_NETA"
+#define WIFI_SSID "I_TAK_NIE_MAM_NETA1"
 
 #define LED_PIN 2
 
