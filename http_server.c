@@ -198,11 +198,12 @@ void plcFunction(char *data, u16_t len, struct tcp_pcb *pcb)
     }
     else if (!strncmp("writePLCregisters", functionName, functionNameLen))
     {
-        uint8_t buffer[32];
+        uint8_t buffer[33];
         uint32_t reg = getRegFromInput(data + t[5].start, data + t[5].end);
         if (reg == -1)
             return;
-        int j = 0;
+        buffer[0] = (uint8_t)reg;
+        int j = 1;
         for (int i = 6; t[i].type == JSMN_STRING; i++)
         {
             uint32_t temp = getRegFromInput(data + t[i].start, data + t[i].end);
@@ -213,7 +214,7 @@ void plcFunction(char *data, u16_t len, struct tcp_pcb *pcb)
         for (int i = 0; i < j; i++)
             printf("%d ", buffer[i]);
         printf("\n");
-        writePLCregisters((uint8_t)reg, buffer, (uint8_t)j);
+        writePLCregisters(buffer, (uint8_t)j);
         return;
     }
     else if (!strncmp("setPLCtxAddrType", functionName, functionNameLen))

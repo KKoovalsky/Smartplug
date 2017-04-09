@@ -12,6 +12,7 @@
 
 #include "plc.h"
 #include "spiffs_local.h"
+#include "espressif/phy_info.h"
 
 #define SCL_PIN 5
 #define SDA_PIN 4
@@ -37,6 +38,13 @@ void user_init(void)
 {
     uart_set_baud(0, 74880);
     printf("SDK version:%s\n", sdk_system_get_sdk_version());
+
+	sdk_phy_info_t info;
+	read_saved_phy_info(&info);
+	dump_phy_info(&info, 0);
+
+	printf("Hello!\n");
+
     i2c_init(SCL_PIN, SDA_PIN);
 
     sdk_wifi_set_opmode(SOFTAP_MODE);
@@ -60,7 +68,7 @@ void user_init(void)
 
     ip_addr_t first_client_ip;
     IP4_ADDR(&first_client_ip, 192, 168, 1, 2);
-    dhcpserver_start(&first_client_ip, 4);
+    dhcpserver_start(&first_client_ip, 3);
 
     xSPIFFSQueue = xQueueCreate(1, sizeof(PermConfData_s));
 
@@ -68,4 +76,11 @@ void user_init(void)
     xTaskCreate(plcTask, "PLC", 256, NULL, 3, &xPLCTask);
     xTaskCreate(httpd_task, "HTTP Daemon", 128, NULL, 2, NULL);
     xTaskCreate(spiffsTask, "SPIFFS", 512, NULL, 2, NULL);
+
+#ifdef PLC_TX_TEST
+    if(xTaskCreate(plcTestTxTask, "PLC_TX", 256, NULL, 2, NULL) == pdPASS)
+        printf("YEP\n\r");
+    else
+        printf("NOPE\n\r");
+#endif
 }

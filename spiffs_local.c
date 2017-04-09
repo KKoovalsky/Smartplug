@@ -12,6 +12,8 @@
 #include "esp_spiffs.h"
 #include "spiffs_local.h"
 
+#define FILE_MAX_LENGTH 180
+
 TaskHandle_t xSPIFFSTask;
 QueueHandle_t xSPIFFSQueue;
 

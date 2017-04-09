@@ -142,6 +142,8 @@
 
 #define MAX_I2C_ATTEMPTS 5
 
+//#define PLC_TX_TEST
+
 #include <stdint.h>
 #include "FreeRTOS.h"
 #include "task.h"
@@ -151,10 +153,14 @@ extern TaskHandle_t xPLCTask;
 uint8_t readPLCregister(uint8_t reg);
 void readPLCregisters(uint8_t reg, uint8_t *buf, uint32_t len);
 void writePLCregister(uint8_t reg, uint8_t val);
-void writePLCregisters(uint8_t reg, uint8_t *buf, uint8_t len);
+void writePLCregisters(uint8_t *buf, uint8_t len);
 
 void setPLCtxAddrType(uint8_t txSAtype, uint8_t txDAtype);
 void setPLCtxDA(uint8_t txDAtype, volatile uint8_t *txDA);
+
+void fillPLCTxData (uint8_t *buf, uint8_t len);
+void sendPLCData(uint8_t len);
+
 void setPLCnodeLA(uint8_t logicalAddress);
 void setPLCnodeGA(uint8_t groupAddress);
 void getPLCrxAddrType(uint8_t *rxSAtype, uint8_t *rxDAtype);
@@ -164,5 +170,9 @@ uint8_t readPLCintRegister(void);
 void initPLCdevice(uint8_t nodeLA);
 
 void plcTask(void *pvParameters);
+
+#ifdef PLC_TX_TEST
+void plcTestTxTask(void *pvParameters);
+#endif
 
 #endif
