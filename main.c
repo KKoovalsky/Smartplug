@@ -40,8 +40,6 @@ void user_init(void)
 
     i2c_init(SCL_PIN, SDA_PIN);
 
-    xScanEnableMutex = xSemaphoreCreateMutex();
-
     xSPIFFSQueue = xQueueCreate(1, sizeof(PermConfData_s));
     xConnectWhileConfigQueue = xQueueCreate(1, sizeof(PermConfData_s));
 

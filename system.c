@@ -12,7 +12,6 @@
 
 QueueHandle_t xConnectWhileConfigQueue;
 TaskHandle_t xConnectWhileConfigTask;
-SemaphoreHandle_t xScanEnableMutex;
 
 volatile char ssidSearched[33];
 
@@ -93,40 +92,6 @@ void connectToStation(char *SSID, char *password)
     sdk_wifi_station_connect();
 }
 
-/*
-static void scanDoneClbk(void *arg, sdk_scan_status_t status)
-{
-    if (status != SCAN_OK)
-    {
-        printf("Error: WiFi scan failed\n");
-        return;
-    }
-
-    struct sdk_bss_info *bss = (struct sdk_bss_info *)arg;
-    // first one is invalid
-    bss = bss->next.stqe_next;
-
-    printf("Scanning for wifi network: %s\n", ssidSearched);
-
-    while (NULL != bss)
-    {
-		if(!strcmp((char *)bss->ssid, (char *)ssidSearched))
-		{
-            printf("SSID found!\n");
-			if(xSemaphoreTake(xScanEnableMutex, 0))
-			{
-				xTaskNotify(xConnectWhileConfigTask, 1, eSetValueWithoutOverwrite);
-				xSemaphoreGive(xScanEnableMutex);
-			}
-			break;
-		}       
-        bss = bss->next.stqe_next;
-    }
-
-	xTaskNotify(xConnectWhileConfigTask, 0, eSetValueWithoutOverwrite);
-}
-
-*/
 // TODO: Disable button when configuring
 // TODO: add to struct strlen field for faster operation
 void connectWhileConfigTask(void *pvParameters)
@@ -197,48 +162,6 @@ void connectWhileConfigTask(void *pvParameters)
                 vPortFree(configData.password);
                 vPortFree(configData.devicePlugged);
             }
-            /*
-            xSemaphoreGive(xScanEnableMutex);
-			sdk_wifi_station_scan(NULL, scanDoneClbk);
-
-            int ssidLen = strlen(configData.SSID);
-            memcpy((char *)ssidSearched, configData.SSID, ssidLen);
-            ssidSearched[ssidLen] = '\0';
-
-			uint32_t pulNotificationValue;
-			if(xTaskNotifyWait(0, 0xFFFFFFFF, &pulNotificationValue, pdMS_TO_TICKS(5000)))
-			{
-				if(pulNotificationValue)
-				{
-					if(connectToStation(configData.SSID, configData.password))
-                    {
-                        // Inform about successful connection
-						printf("Successful connection to external AP!\n");
-                        startBrokerMode();
-                        xQueueSend(xSPIFFSQueue, &configData, 0);
-                    } else 
-                    {
-						printf("Problems with remote AP. Maybe password is wrong?\n");
-                        vPortFree(configData.SSID);
-						vPortFree(configData.password);
-						vPortFree(configData.devicePlugged);
-                    }
-				} else 
-				{
-					printf("Specified network not found!\n");
-					vPortFree(configData.SSID);
-					vPortFree(configData.password);
-					vPortFree(configData.devicePlugged);
-				}
-			} else
-			{
-				printf("Timeout waiting for wifi scan. Aborting.\n");
-				xSemaphoreTake(xScanEnableMutex, 0);
-				vPortFree(configData.SSID);
-				vPortFree(configData.password);
-				vPortFree(configData.devicePlugged);
-			}
-            */
         }
         else if (configData.mode == SPIFFS_WRITE_PLC_CONF)
         {

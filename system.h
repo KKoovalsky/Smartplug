@@ -20,7 +20,6 @@
 
 extern QueueHandle_t xConnectWhileConfigQueue;
 extern TaskHandle_t xConnectWhileConfigTask;
-extern SemaphoreHandle_t xScanEnableMutex;
 
 void startBrokerMode();
 void startClientMode();
