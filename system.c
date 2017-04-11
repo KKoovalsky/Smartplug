@@ -158,6 +158,7 @@ void connectWhileConfigTask(void *pvParameters)
             if (abort)
             {
                 sdk_wifi_station_disconnect();
+                sdk_wifi_station_set_auto_connect(0);
                 vPortFree(configData.SSID);
                 vPortFree(configData.password);
                 vPortFree(configData.devicePlugged);

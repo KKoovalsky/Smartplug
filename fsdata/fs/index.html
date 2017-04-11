@@ -31,7 +31,7 @@
                     <td><input type="text" name="device_broker" id="device_broker"></td>
                 </tr>
             </table>
-            <input type="button" name="ok-button" id="wifi-opts" value="Set broker mode" onclick="setBrokerMode()">
+            <input type="button" name="ok-butt-wifi-opts" id="wifi-opts" value="Set broker mode" onclick="setBrokerMode()">
         </div>
         <hr width="60%" color="gray">
         <div class="sub" align="center">
@@ -46,7 +46,7 @@
                     <td><input type="text" name="device_client" id="device_client"></td>
                 </tr>
             </table>
-            <input type="button" name="ok-button" id="plc-opts" value="Set client mode" onclick="setClientMode()">
+            <input type="button" name="ok-butt-plc-opts" id="plc-opts" value="Set client mode" onclick="setClientMode()">
         </div>
         <hr width="60%" color="gray">
         <div class="sub" align="center" id="status_box"></div>
@@ -58,7 +58,7 @@
         var retries;
 
         window.onload = function() {
-            wsOpen();
+            wsOpen(null);
         }
 
         function setMsg(text) {
@@ -73,7 +73,7 @@
             setMsg(dv);
         }
 
-        function wsOpen() {
+        function wsOpen(data) {
             if (ws === undefined || ws.readyState != 0) {
                 if (retries)
                     setMsg("Problems occured while connecting to device, retrying...");
@@ -82,7 +82,10 @@
                 ws.binaryType = 'arraybuffer';
                 ws.onopen = function(evt) {
                     retries = 0;
-                    setMsg("Ready to set configuration.");
+                    if (data !== null)
+                        wsWrite(data);
+                    else
+                        setMsg("Ready to set configuration.");
                 };
                 ws.onerror = function(evt) {
                     setMsg("Error connecting to device...");
@@ -96,9 +99,11 @@
 
         function wsWrite(data) {
             if (ws.readyState == 3 || retries++ > 5)
-                wsOpen();
-            if (ws.readyState == 1)
+                wsOpen(data);
+            if (ws.readyState == 1) {
                 ws.send(data);
+                setMsg("Configuring...");
+            }
         }
 
         function setBrokerMode() {
