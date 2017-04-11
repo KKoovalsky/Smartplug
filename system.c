@@ -9,11 +9,10 @@
 #include "queue.h"
 #include <dhcpserver.h>
 #include "spiffs_local.h"
+#include "http_server.h"
 
 QueueHandle_t xConnectWhileConfigQueue;
 TaskHandle_t xConnectWhileConfigTask;
-
-volatile char ssidSearched[33];
 
 void startBrokerMode()
 {
@@ -75,25 +74,20 @@ void setAP_STA()
     dhcpserver_start(&first_client_ip, 3);
 }
 
-void connectToStation(char *SSID, char *password)
+void connectToStation(char *SSID, char *password, int SSIDLen, int passwordLen)
 {
     struct sdk_station_config config;
 
-    int ssidLen = strlen(SSID);
-    memcpy(config.ssid, SSID, ssidLen);
-
-    int passwordLen = strlen(password);
+    memcpy(config.ssid, SSID, SSIDLen);
     memcpy(config.password, password, passwordLen);
 
-    config.ssid[ssidLen] = '\0';
+    config.ssid[SSIDLen] = '\0';
     config.password[passwordLen] = '\0';
 
     sdk_wifi_station_set_config(&config);
     sdk_wifi_station_connect();
 }
 
-// TODO: Disable button when configuring
-// TODO: add to struct strlen field for faster operation
 void connectWhileConfigTask(void *pvParameters)
 {
     for (;;)
@@ -103,13 +97,14 @@ void connectWhileConfigTask(void *pvParameters)
 
         if (configData.mode == SPIFFS_WRITE_WIFI_CONF)
         {
-            connectToStation(configData.SSID, configData.password);
+            connectToStation(configData.SSID, configData.password, configData.SSIDLen, configData.passwordLen);
             bool abort = false;
             int retries = MAX_RETRIES;
+            unsigned int status;
             while (1)
             {
                 vTaskDelay(pdMS_TO_TICKS(1000));
-                unsigned int status = (unsigned int)sdk_wifi_station_get_connect_status();
+                status = (unsigned int)sdk_wifi_station_get_connect_status();
                 if (status == STATION_WRONG_PASSWORD)
                 {
                     printf("WiFi: wrong password\n\r");
@@ -163,6 +158,8 @@ void connectWhileConfigTask(void *pvParameters)
                 vPortFree(configData.password);
                 vPortFree(configData.devicePlugged);
             }
+
+            sendWsResponse(wifiJsonStrings[status], wifiJsonStringsLen[status]);
         }
         else if (configData.mode == SPIFFS_WRITE_PLC_CONF)
         {

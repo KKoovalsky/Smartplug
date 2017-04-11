@@ -22,7 +22,8 @@ QueueHandle_t xSPIFFSQueue;
 
 /* TODO:    1. Use O_RDWR in place of O_WRONLY (problems occured when using o_RDWR)
             2. Delete rubbish at the end of file, 
-                which are leftovers from past config data, which was longer than now. */
+                which are leftovers from past config data, which was longer than now. 
+            3. Create one file for configuration data instead of wifi.conf and plc.conf*/
 
 void spiffsTask(void *pvParameters)
 {
@@ -89,9 +90,9 @@ void spiffsTask(void *pvParameters)
             }
 
             lseek(fd, 0, SEEK_SET);
-            write(fd, configData.SSID, strlen(configData.SSID));
+            write(fd, configData.SSID, configData.SSIDLen);
             write(fd, "\n", 1);
-            write(fd, configData.password, strlen(configData.password));
+            write(fd, configData.password, configData.passwordLen);
             write(fd, "\n", 1);
 
             printf("%s %s\n", configData.SSID, configData.password);
@@ -112,7 +113,7 @@ void spiffsTask(void *pvParameters)
 
             lseek(fd, 0, SEEK_SET);
 
-            write(fd, configData.PLCPhyAddr, strlen(configData.PLCPhyAddr));
+            write(fd, configData.PLCPhyAddr, configData.PLCPhyAddrLen);
             write(fd, "\n", 1);
 
             close(fd);

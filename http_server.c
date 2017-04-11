@@ -21,6 +21,32 @@ typedef enum {
 
 TaskHandle_t xHTTPServerTask;
 volatile WebsocketClbkUse_e websocketClbkUse = NONE;
+volatile struct tcp_pcb *wsPCB;
+
+const uint8_t wifiConnectionFailedJson[] = "{\"data\":\"enableButtons\",\"msg\":\"Could not connect.\"}";
+const uint8_t wifiWrongPasswordJson[] = "{\"data\":\"enableButtons\",\"msg\":\"Wrong wifi password\"}";
+const uint8_t wifiNoAPFoundJson[] = "{\"data\":\"enableButtons\",\"msg\":\"No AP found.\"}";
+const uint8_t wifiConnectionSuccessJson[] = "{\"data\":\"enableButtons\",\"msg\":\"Connection successful.\"}";
+
+// Messages correspond to enumerated type in esp_sta.h (STATION_IDLE, STATION_CONNECTING...)/
+const uint8_t *wifiJsonStrings[] = {
+    wifiConnectionFailedJson,
+    wifiConnectionFailedJson,
+    wifiWrongPasswordJson,
+    wifiNoAPFoundJson,
+    wifiConnectionFailedJson,
+    wifiConnectionSuccessJson
+};
+
+// Length of above strings (null character -> so '-1'')
+const uint8_t wifiJsonStringsLen [] = {
+    sizeof(wifiConnectionFailedJson) - 1,
+    sizeof(wifiConnectionFailedJson) - 1,
+    sizeof(wifiWrongPasswordJson) - 1,
+    sizeof(wifiNoAPFoundJson) - 1,
+    sizeof(wifiConnectionFailedJson) - 1,
+    sizeof(wifiConnectionSuccessJson) - 1
+};
 
 const char *plcFunctionNames[] =
     {
@@ -127,6 +153,10 @@ void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
 
         configData.SSID[SSIDStrLen] = configData.password[passwordLen] = configData.devicePlugged[devPluggedLen] = '\0';
 
+        configData.SSIDLen = (uint8_t)SSIDStrLen;
+        configData.passwordLen = (uint8_t)passwordLen;
+        configData.devicePluggedLen = (uint8_t)devPluggedLen;
+
         printf("%s %s %s\n", configData.SSID, configData.password, configData.devicePlugged);
 
         configData.mode = SPIFFS_WRITE_WIFI_CONF;
@@ -149,6 +179,9 @@ void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
         configData.PLCPhyAddr[phyAddrLen] = configData.devicePlugged[devPluggedLen] = '\0';
 
         printf("%s %s\n", configData.PLCPhyAddr, configData.devicePlugged);
+
+        configData.PLCPhyAddrLen = (uint8_t)phyAddrLen;
+        configData.devicePluggedLen = (uint8_t)devPluggedLen;
 
         configData.mode = SPIFFS_WRITE_PLC_CONF;
         xQueueSend(xConnectWhileConfigQueue, &configData, 0);
@@ -373,11 +406,13 @@ void websocket_open_cb(struct tcp_pcb *pcb, const char *uri)
     {
         websocketClbkUse = SET_CONFIG;
         printf("Set config\n");
+        wsPCB = pcb;
     }
     else if (!strcmp("/plc-function", uri))
     {
         websocketClbkUse = PLC_FUNCTION;
         printf("PLC function\n");
+        wsPCB = pcb;
     }
     else
     {
@@ -399,4 +434,9 @@ void httpd_task(void *pvParameters)
 
     for (;;)
         ;
+}
+
+void sendWsResponse(const uint8_t *msg, int len)
+{
+    websocket_write((struct tcp_pcb *)wsPCB, msg, len, WS_TEXT_MODE);
 }

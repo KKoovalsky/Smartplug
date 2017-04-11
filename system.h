@@ -27,7 +27,7 @@ void startClientMode();
 void setSoftAP();
 void setAP_STA();
 
-void connectToStation(char *SSID, char *password);
+void connectToStation(char *SSID, char *password, int SSIDLen, int passwordLen);
 
 void connectWhileConfigTask(void *pvParameters);
 

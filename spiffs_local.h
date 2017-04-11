@@ -13,6 +13,7 @@ typedef enum
 typedef struct 
 {
     char *SSID, *password, *PLCPhyAddr, *devicePlugged;
+    uint8_t SSIDLen, passwordLen, PLCPhyAddrLen, devicePluggedLen;
     SpiffsMode_t mode;
 } PermConfData_s;
 

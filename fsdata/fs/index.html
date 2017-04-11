@@ -67,10 +67,25 @@
             console.log(text);
         }
 
+        function disableButtons() {
+            document.getElementById('wifi-opts').disabled = true;
+            document.getElementById('plc-opts').disabled = true;
+        }
+
+        function enableButtons() {
+            document.getElementById('wifi-opts').disabled = false;
+            document.getElementById('plc-opts').disabled = false;
+        }
+
         function onMessage(evt) {
             retries = 0;
-            var dv = new DataView(evt.data);
-            setMsg(dv);
+            var data = evt.data;
+            var content = JSON.parse(data);
+            if (content.data == "enableButtons") {
+                enableButtons();
+                setMsg(content.msg);
+            } else
+                setMsg(data);
         }
 
         function wsOpen(data) {
@@ -102,7 +117,6 @@
                 wsOpen(data);
             if (ws.readyState == 1) {
                 ws.send(data);
-                setMsg("Configuring...");
             }
         }
 
@@ -115,6 +129,8 @@
             sbox = document.getElementById('status_box');
             sbox.innerHTML = jsonString;
             wsWrite(jsonString);
+            disableButtons();
+            setMsg("Configuring...");
         }
 
         function setClientMode() {
@@ -125,6 +141,8 @@
             sbox = document.getElementById('status_box');
             sbox.innerHTML = jsonString;
             wsWrite(jsonString);
+            disableButtons();
+            setMsg("Configuring...");
         }
     </script>
 </body>
