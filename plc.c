@@ -7,6 +7,7 @@
 #include "espressif/esp_common.h"
 #include "esp8266.h"
 #include "esp/uart.h"
+#include "system.h"
 
 #define DEBUG_PLC
 #define HOST_INT_PIN 13

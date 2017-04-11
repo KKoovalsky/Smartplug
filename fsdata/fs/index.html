@@ -26,6 +26,10 @@
                     <td><b>Target password:</b></td>
                     <td><input type="text" name="password" id="password"></td>
                 </tr>
+                <tr>
+                    <td><b>Plugged device:</b></td>
+                    <td><input type="text" name="device_broker" id="device_broker"></td>
+                </tr>
             </table>
             <input type="button" name="ok-button" id="wifi-opts" value="Set broker mode" onclick="setBrokerMode()">
         </div>
@@ -36,6 +40,10 @@
                 <tr>
                     <td><b>Broker PLC PHY Address:</b></td>
                     <td><input type="text" name="plc_phy_addr" id="plc_phy_addr"></td>
+                </tr>
+                <tr>
+                    <td><b>Plugged device:</b></td>
+                    <td><input type="text" name="device_client" id="device_client"></td>
                 </tr>
             </table>
             <input type="button" name="ok-button" id="plc-opts" value="Set client mode" onclick="setClientMode()">
@@ -97,6 +105,7 @@
             var wifi = new Object();
             wifi.ssid = document.getElementById('ssid').value;
             wifi.password = document.getElementById('password').value;
+            wifi.device_plugged = document.getElementById('device_broker').value;
             var jsonString = JSON.stringify(wifi);
             sbox = document.getElementById('status_box');
             sbox.innerHTML = jsonString;
@@ -106,6 +115,7 @@
         function setClientMode() {
             var plcClient = new Object();
             plcClient.phyaddr = document.getElementById('plc_phy_addr').value;
+            plcClient.device_plugged = document.getElementById('device_client').value;
             var jsonString = JSON.stringify(plcClient);
             sbox = document.getElementById('status_box');
             sbox.innerHTML = jsonString;

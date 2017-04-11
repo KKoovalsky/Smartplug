@@ -142,11 +142,10 @@
 
 #define MAX_I2C_ATTEMPTS 5
 
-//#define PLC_TX_TEST
-
 #include <stdint.h>
 #include "FreeRTOS.h"
 #include "task.h"
+#include "system.h"
 
 extern TaskHandle_t xPLCTask;
 

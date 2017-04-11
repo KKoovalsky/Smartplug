@@ -19,6 +19,7 @@ typedef enum {
     PLC_FUNCTION
 } WebsocketClbkUse_e;
 
+TaskHandle_t xHTTPServerTask;
 volatile WebsocketClbkUse_e websocketClbkUse = NONE;
 
 const char *plcFunctionNames[] =
@@ -104,35 +105,53 @@ void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
 
     printf("%.*s\n", configStrLen, configStr);
 
+    //{"ssid":"aaaa","password":"bbbbbb","device_plugged":"cccc"}
     if (!strncmp(configStr, "ssid", configStrLen))
     {
         char *SSID = data + t[2].start;
         int SSIDStrLen = t[2].end - t[2].start;
+
         char *password = data + t[4].start;
         int passwordLen = t[4].end - t[4].start;
+
+        char *devPlugged = data + t[6].start;
+        int devPluggedLen = t[6].end - t[6].start;
+
         configData.SSID = (char *)pvPortMalloc(sizeof(char) * (SSIDStrLen + 1));
         configData.password = (char *)pvPortMalloc(sizeof(char) * (passwordLen + 1));
+        configData.devicePlugged = (char *)pvPortMalloc(sizeof(char) * (devPluggedLen + 1));
+
         memcpy(configData.SSID, SSID, SSIDStrLen);
         memcpy(configData.password, password, passwordLen);
-        configData.SSID[SSIDStrLen] = configData.password[passwordLen] = '\0';
+        memcpy(configData.devicePlugged, devPlugged, devPluggedLen);
 
-        printf("%s %s\n", configData.SSID, configData.password);
+        configData.SSID[SSIDStrLen] = configData.password[passwordLen] = configData.devicePlugged[devPluggedLen] = '\0';
+
+        printf("%s %s %s\n", configData.SSID, configData.password, configData.devicePlugged);
 
         configData.mode = SPIFFS_WRITE_WIFI_CONF;
-        xQueueSend(xSPIFFSQueue, &configData, 0);
+        xQueueSend(xConnectWhileConfigQueue, &configData, 0);
     }
     else if (!strncmp(configStr, "phyaddr", configStrLen))
     {
         char *phyAddr = data + t[2].start;
         int phyAddrLen = t[2].end - t[2].start;
-        configData.PLCPhyAddr = (char *)pvPortMalloc(sizeof(char) * (phyAddrLen + 1));
-        memcpy(configData.PLCPhyAddr, phyAddr, phyAddrLen);
-        configData.PLCPhyAddr[phyAddrLen] = '\0';
 
-        printf("%s\n", configData.PLCPhyAddr);
+        char *devPlugged = data + t[4].start;
+        int devPluggedLen = t[4].end - t[4].start;
+
+        configData.PLCPhyAddr = (char *)pvPortMalloc(sizeof(char) * (phyAddrLen + 1));
+        configData.devicePlugged = (char *)pvPortMalloc(sizeof(char) * (devPluggedLen + 1));
+
+        memcpy(configData.PLCPhyAddr, phyAddr, phyAddrLen);
+        memcpy(configData.devicePlugged, devPlugged, devPluggedLen);
+
+        configData.PLCPhyAddr[phyAddrLen] = configData.devicePlugged[devPluggedLen] = '\0';
+
+        printf("%s %s\n", configData.PLCPhyAddr, configData.devicePlugged);
 
         configData.mode = SPIFFS_WRITE_PLC_CONF;
-        xQueueSend(xSPIFFSQueue, &configData, 0);
+        xQueueSend(xConnectWhileConfigQueue, &configData, 0);
     }
     else
     {
@@ -349,8 +368,6 @@ void websocket_cb(struct tcp_pcb *pcb, uint8_t *data, u16_t data_len, uint8_t mo
 void websocket_open_cb(struct tcp_pcb *pcb, const char *uri)
 {
     printf("WS URI: %s\n", uri);
-
-    checkFileContent();
 
     if (!strcmp("/set-config", uri))
     {

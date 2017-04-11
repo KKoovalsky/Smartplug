@@ -11,26 +11,18 @@
 #include "spiffs.h"
 #include "esp_spiffs.h"
 #include "spiffs_local.h"
+#include "http_server.h"
+#include "system.h"
 
-#define FILE_MAX_LENGTH 180
+const char clientStr[] = "CLIENT";
+const char brokerStr[] = "BROKER";
 
 TaskHandle_t xSPIFFSTask;
 QueueHandle_t xSPIFFSQueue;
 
-const char wifiSSIDStr[] = "SSID=";
-const char wifiPasswordStr[] = "PASSWORD=";
-const char plcPhyAddrStr[] = "PLC_PHY_ADDR=";
-
 /* TODO:    1. Use O_RDWR in place of O_WRONLY (problems occured when using o_RDWR)
             2. Delete rubbish at the end of file, 
                 which are leftovers from past config data, which was longer than now. */
-
-/*  buf is a buffer where string str will be searched and any data after found str string 
- *  will be copied into value buffer.
- */
-static int retrieveValue(char *buf, const char *str, char *value);
-
-static void getFileContent(char *buf, int bufLen);
 
 void spiffsTask(void *pvParameters)
 {
@@ -42,6 +34,32 @@ void spiffsTask(void *pvParameters)
         vTaskDelete(NULL);
     }
 
+    // Read file which contains mode of operation.
+    int fd = open("mode.conf", O_RDONLY, 0);
+    if (fd < 0)
+    {
+        printf("Error opening file mode.conf\n");
+        vTaskDelete(NULL);
+    }
+
+    char buffer[8];
+    lseek(fd, 0, SEEK_SET);
+    read(fd, buffer, sizeof(buffer));
+    if (!strncmp(buffer, clientStr, sizeof(clientStr)))
+    {
+        startClientMode();
+    }
+    else if (!strncmp(buffer, brokerStr, sizeof(brokerStr)))
+    {
+        startBrokerMode();
+    }
+    else // If its first run of this device, then start HTTP server to get configuration
+    {
+        printf("First run of the device\n");
+        setAP_STA();
+        xTaskCreate(httpd_task, "HTTP Daemon", 128, NULL, 2, &xHTTPServerTask);
+    }
+
     for (;;)
     {
         PermConfData_s configData;
@@ -49,36 +67,34 @@ void spiffsTask(void *pvParameters)
 
         printf("Configuring...\n");
 
+        // Set device plugged name.
+        int fd = open("id.conf", O_WRONLY, 0);
+        if (fd < 0)
+        {
+            printf("Error opening file wifi.conf\n");
+            continue;
+        }
+        lseek(fd, 0, SEEK_SET);
+        write(fd, configData.devicePlugged, strlen(configData.devicePlugged));
+        write(fd, "\n", 1);
+        close(fd);
+
         if (configData.mode == SPIFFS_WRITE_WIFI_CONF)
         {
-            //(Local strings = 26 + max SSID length = 32 + max wifi passwd = 64 + PLC Phy address = 8) = 130 (+ margin)
-            char buffer[146];
-            getFileContent(buffer, sizeof(buffer));
-
-            int fd = open("data", O_WRONLY, 0);
+            int fd = open("wifi.conf", O_WRONLY, 0);
             if (fd < 0)
             {
-                printf("Error opening file\n");
+                printf("Error opening file wifi.conf\n");
                 continue;
             }
 
             lseek(fd, 0, SEEK_SET);
-            write(fd, wifiSSIDStr, sizeof(wifiSSIDStr) - 1);
             write(fd, configData.SSID, strlen(configData.SSID));
             write(fd, "\n", 1);
-
-            write(fd, wifiPasswordStr, sizeof(wifiPasswordStr) - 1);
             write(fd, configData.password, strlen(configData.password));
             write(fd, "\n", 1);
 
             printf("%s %s\n", configData.SSID, configData.password);
-
-            char plcPhyAddr[24];
-            memset(plcPhyAddr, 0, sizeof(plcPhyAddr));
-            int phyAddrLen = retrieveValue(buffer, plcPhyAddrStr, plcPhyAddr);
-
-            write(fd, plcPhyAddrStr, sizeof(plcPhyAddrStr) - 1);
-            write(fd, plcPhyAddr, phyAddrLen);
 
             close(fd);
 
@@ -87,29 +103,15 @@ void spiffsTask(void *pvParameters)
         }
         else if (configData.mode == SPIFFS_WRITE_PLC_CONF)
         {
-            char buffer[146];
-            getFileContent(buffer, sizeof(buffer));
-
-            int fd = open("data", O_WRONLY, 0);
+            int fd = open("plc.conf", O_WRONLY, 0);
             if (fd < 0)
             {
-                printf("Error opening file\n");
+                printf("Error opening file plc.conf\n");
                 continue;
             }
 
-            char wifiData[72];
-            int ssidLen = retrieveValue(buffer, wifiSSIDStr, wifiData);
-
             lseek(fd, 0, SEEK_SET);
-            write(fd, wifiSSIDStr, sizeof(wifiSSIDStr) - 1);
-            write(fd, wifiData, ssidLen);
 
-            int passwordLen = retrieveValue(buffer, wifiPasswordStr, wifiData);
-
-            write(fd, wifiPasswordStr, sizeof(wifiPasswordStr) - 1);
-            write(fd, wifiData, passwordLen);
-
-            write(fd, plcPhyAddrStr, sizeof(plcPhyAddrStr) - 1);
             write(fd, configData.PLCPhyAddr, strlen(configData.PLCPhyAddr));
             write(fd, "\n", 1);
 
@@ -124,8 +126,6 @@ void spiffsTask(void *pvParameters)
         {
             printf("Unknown SPIFFS mode\n");
         }
-
-        checkFileContent();
     }
 }
 
@@ -144,37 +144,6 @@ void checkFileContent()
     lseek(fd, 0, SEEK_SET);
     read(fd, buffer, sizeof(buffer));
     printf("%s\n", buffer);
-
-    close(fd);
-}
-
-static int retrieveValue(char *buf, const char *str, char *value)
-{
-    char *p = strstr(buf, str);
-    p += strlen(str);
-    char *pEnd = strchr(p, '\n');
-
-    int strLen = pEnd - p;
-
-    memcpy(value, p, strLen);
-    value[strLen] = '\n';
-
-    return strLen + 1;
-}
-
-static void getFileContent(char *buf, int bufLen)
-{
-    memset(buf, 0, bufLen);
-
-    int fd = open("data", O_RDONLY, 0);
-    if (fd < 0)
-    {
-        printf("Error opening file\n");
-        return;
-    }
-
-    lseek(fd, 0, SEEK_SET);
-    read(fd, buf, bufLen);
 
     close(fd);
 }
