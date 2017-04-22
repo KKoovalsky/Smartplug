@@ -40,11 +40,13 @@ void user_init(void)
 
     i2c_init(SCL_PIN, SDA_PIN);
 
+    sdk_wifi_station_set_auto_connect(0);
+
     xSPIFFSQueue = xQueueCreate(1, sizeof(PermConfData_s));
     xConnectWhileConfigQueue = xQueueCreate(1, sizeof(PermConfData_s));
 
     xTaskCreate(blinkTask, "Blink", 256, NULL, 2, NULL);
-    //xTaskCreate(plcTask, "PLC", 256, NULL, 3, &xPLCTask);
+    xTaskCreate(plcTask, "PLC", 256, NULL, 3, &xPLCTask);
     xTaskCreate(spiffsTask, "SPIFFS", 512, NULL, 2, NULL);
     xTaskCreate(connectWhileConfigTask, "configConnect", 512, NULL, 2, &xConnectWhileConfigTask);
 

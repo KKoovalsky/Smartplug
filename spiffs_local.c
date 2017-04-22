@@ -57,6 +57,7 @@ void spiffsTask(void *pvParameters)
     else // If its first run of this device, then start HTTP server to get configuration
     {
         printf("First run of the device\n");
+        //Disable auto connect
         setAP_STA();
         xTaskCreate(httpd_task, "HTTP Daemon", 128, NULL, 2, &xHTTPServerTask);
     }

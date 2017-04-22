@@ -193,7 +193,7 @@ void initPLCdevice(uint8_t nodeLA)
     writePLCregister(PLC_MODE_REG, TX_ENABLE | RX_ENABLE | RX_OVERRIDE | ENABLE_BIU | CHECK_DA | VERIFY_PACKET_CRC8);
     //	Ustawienie poziomu sygnału dla mechanizmu CSMA (Carrier Sense Multimaster Access)
     // 	zapewniającego wielodostęp do medium transmisyjnego
-    writePLCregister(THRESHOLD_NOISE_REG, BIU_TRESHOLD_70DBUV);
+    writePLCregister(THRESHOLD_NOISE_REG, BIU_TRESHOLD_87DBUV);
     //	Konfiguracja parametrów transmisji
     writePLCregister(MODEM_CONFIG_REG, MODEM_BPS_2400 | MODEM_FSK_BAND_DEV_3KHZ);
     //	Uruchomienie przerwań dla wybranych zdarzeń (aktywny poziom niski na wyprowadzeniu HOST_INT)
@@ -203,7 +203,7 @@ void initPLCdevice(uint8_t nodeLA)
     //	transmisji = 5 (domyślne logiczne typy adresów SA i DA)
     writePLCregister(TX_CONFIG_REG, TX_SERVICE_ACKNOWLEDGED | 0x05);
     //	Ustawienie wzmocnienia dla modułu nadajnika PLC
-    writePLCregister(TX_GAIN_REG, TX_GAIN_LEVEL_3500MV);
+    writePLCregister(TX_GAIN_REG, TX_GAIN_LEVEL_3000MV);
     //	Ustawienie czułości dla modułu odbiornika PLC
     writePLCregister(RX_GAIN_REG, RX_GAIN_LEVEL_250UV);
     setPLCnodeLA(nodeLA); //	Ustawienie numeru LA modemu PLC
@@ -290,7 +290,7 @@ void plcTestTxTask(void *pvParameters)
 	for( ; ; )
 	{
 		sendPLCData(len);
-		vTaskDelay(pdMS_TO_TICKS(1000));
+		vTaskDelay(pdMS_TO_TICKS(8*1000));
 	}
 
 }
