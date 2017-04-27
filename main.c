@@ -12,6 +12,7 @@
 #include "plc.h"
 #include "spiffs_local.h"
 #include "system.h"
+#include "cloud.h"
 
 #define SCL_PIN 5
 #define SDA_PIN 4
@@ -41,14 +42,15 @@ void user_init(void)
     i2c_init(SCL_PIN, SDA_PIN);
 
     sdk_wifi_station_set_auto_connect(0);
-
+    
     xSPIFFSQueue = xQueueCreate(1, sizeof(PermConfData_s));
     xConnectWhileConfigQueue = xQueueCreate(1, sizeof(PermConfData_s));
 
     xTaskCreate(blinkTask, "Blink", 256, NULL, 2, NULL);
     xTaskCreate(plcTask, "PLC", 256, NULL, 3, &xPLCTask);
     xTaskCreate(spiffsTask, "SPIFFS", 512, NULL, 2, NULL);
-    xTaskCreate(connectWhileConfigTask, "configConnect", 512, NULL, 2, &xConnectWhileConfigTask);
+    xTaskCreate(connectWhileConfigTask, "configConnect", 512, NULL, 3, &xConnectWhileConfigTask);
+    xTaskCreate(mqttTask, "MQTT", 1024, NULL, 2, &xMqttTask);
 
 #ifdef PLC_TX_TEST
     if (xTaskCreate(plcTestTxTask, "PLC_TX", 256, NULL, 2, NULL) == pdPASS)

@@ -46,18 +46,18 @@ void spiffsTask(void *pvParameters)
     char buffer[8];
     lseek(fd, 0, SEEK_SET);
     read(fd, buffer, sizeof(buffer));
-    if (!strncmp(buffer, clientStr, sizeof(clientStr)))
+    close(fd);
+    if (!strncmp(buffer, clientStr, sizeof(clientStr) - 1))
     {
         startClientMode();
     }
-    else if (!strncmp(buffer, brokerStr, sizeof(brokerStr)))
+    else if (!strncmp(buffer, brokerStr, sizeof(brokerStr) - 1))
     {
-        startBrokerMode();
+        startBrokerMode(1);
     }
     else // If its first run of this device, then start HTTP server to get configuration
     {
         printf("First run of the device\n");
-        //Disable auto connect
         setAP_STA();
         xTaskCreate(httpd_task, "HTTP Daemon", 128, NULL, 2, &xHTTPServerTask);
     }
@@ -73,7 +73,7 @@ void spiffsTask(void *pvParameters)
         int fd = open("id.conf", O_WRONLY, 0);
         if (fd < 0)
         {
-            printf("Error opening file wifi.conf\n");
+            printf("Error opening file id.conf\n");
             continue;
         }
         lseek(fd, 0, SEEK_SET);
@@ -83,14 +83,16 @@ void spiffsTask(void *pvParameters)
 
         if (configData.mode == SPIFFS_WRITE_WIFI_CONF)
         {
-            int fd = open("wifi.conf", O_WRONLY, 0);
+            int fd = open("mode.conf", O_WRONLY, 0);
             if (fd < 0)
             {
-                printf("Error opening file wifi.conf\n");
+                printf("Error opening file mode.conf\n");
                 continue;
             }
 
             lseek(fd, 0, SEEK_SET);
+            write(fd, brokerStr, sizeof(brokerStr) - 1);
+            write(fd, "\n", 1);
             write(fd, configData.SSID, configData.SSIDLen);
             write(fd, "\n", 1);
             write(fd, configData.password, configData.passwordLen);
@@ -105,7 +107,7 @@ void spiffsTask(void *pvParameters)
         }
         else if (configData.mode == SPIFFS_WRITE_PLC_CONF)
         {
-            int fd = open("plc.conf", O_WRONLY, 0);
+            int fd = open("mode.conf", O_WRONLY, 0);
             if (fd < 0)
             {
                 printf("Error opening file plc.conf\n");
@@ -114,15 +116,14 @@ void spiffsTask(void *pvParameters)
 
             lseek(fd, 0, SEEK_SET);
 
+            write(fd, clientStr, sizeof(clientStr) - 1);
+            write(fd, "\n", 1);
             write(fd, configData.PLCPhyAddr, configData.PLCPhyAddrLen);
             write(fd, "\n", 1);
 
             close(fd);
 
             vPortFree(configData.PLCPhyAddr);
-        }
-        else if (configData.mode == SPIFFS_READ)
-        {
         }
         else
         {

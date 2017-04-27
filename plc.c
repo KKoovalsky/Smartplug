@@ -103,18 +103,18 @@ void setPLCtxDA(uint8_t txDAtype, volatile uint8_t *txDA)
     //  ilość bajtów adresu DA
     switch (txDAtype)
     {
-        case TX_DA_TYPE_LOGICAL:
-        case TX_DA_TYPE_GROUP:
-            writePLCregister(TX_DA_REG, (uint8_t)*txDA);
-            break;
-        case TX_DA_TYPE_PHYSICAL:
-        {
-            uint8_t buffer[9];
-            buffer[0] = TX_DA_REG;
-            memcpy(buffer + 1, (uint8_t *)txDA, 8);
-            writePLCregisters(buffer, 9);
-            break;
-        }
+    case TX_DA_TYPE_LOGICAL:
+    case TX_DA_TYPE_GROUP:
+        writePLCregister(TX_DA_REG, (uint8_t)*txDA);
+        break;
+    case TX_DA_TYPE_PHYSICAL:
+    {
+        uint8_t buffer[9];
+        buffer[0] = TX_DA_REG;
+        memcpy(buffer + 1, (uint8_t *)txDA, 8);
+        writePLCregisters(buffer, 9);
+        break;
+    }
     }
 }
 
@@ -213,25 +213,27 @@ void initPLCdevice(uint8_t nodeLA)
 
 void fillPLCTxData(uint8_t *buf, uint8_t len)
 {
-	if(len > 32)
-	{
-		// TODO: Jeżeli ten warunek jest spełniony należy podzielić wiadomość.
-		printf("Internal CY8CPLC10 buffer is shorter than len\n\r");
-		return;
-	}
+    if (len > 32)
+    {
+        // TODO: Jeżeli ten warunek jest spełniony należy podzielić wiadomość.
+        printf("Internal CY8CPLC10 buffer is shorter than len\n\r");
+        return;
+    }
 
-	uint8_t buffer[33];
+    uint8_t buffer[33];
     // Wypełnij bufor nadawczy modemu PLC
-	buffer[0] = TX_DATA_REG;
-	memcpy(buffer + 1, buf, len);
-	writePLCregisters(buffer, len + 1);
+    buffer[0] = TX_DATA_REG;
+    memcpy(buffer + 1, buf, len);
+    writePLCregisters(buffer, len + 1);
 }
 
 // TODO: Zrobić inline z onelinerów.
-void sendPLCData(uint8_t len)
+void sendPLCData(uint8_t *buf, uint8_t len)
 {
-	// Po wypełnieniu bufora nakaż wysłać dane poprzez PLC
-	writePLCregister(TX_MESSAGE_LENGTH_REG, SEND_MESSAGE | (len & (32 - 1)));
+    fillPLCTxData(buf, len);
+    writePLCregister(TX_COMMAND_ID_REG, SEND_REMOTE_DATA);
+    // Po wypełnieniu bufora nakaż wysłać dane poprzez PLC
+    writePLCregister(TX_MESSAGE_LENGTH_REG, SEND_MESSAGE | (len & (32 - 1)));
 }
 
 static void hostIntPinHandler(uint8_t pin)
@@ -249,7 +251,7 @@ void plcTask(void *pvParameters)
 #ifdef PLC_TX_TEST
     initPLCdevice(120);
 #else
-	initPLCdevice(119);
+    initPLCdevice(119);
 #endif
     // Read Physical Address
     uint8_t phyAddr[8];
@@ -268,31 +270,28 @@ void plcTask(void *pvParameters)
 #ifdef PLC_TX_TEST
 void plcTestTxTask(void *pvParameters)
 {
-	vTaskDelay(pdMS_TO_TICKS(4 * 1000));
+    vTaskDelay(pdMS_TO_TICKS(4 * 1000));
 
-	printf("Deske lau\n\r");
+    printf("Deske lau\n\r");
 
-	setPLCtxAddrType(TX_SA_TYPE_LOGICAL, TX_DA_TYPE_LOGICAL);
+    setPLCtxAddrType(TX_SA_TYPE_LOGICAL, TX_DA_TYPE_LOGICAL);
 
-	uint8_t txDA = 119;
-	setPLCtxDA(TX_DA_TYPE_LOGICAL, &txDA);
+    uint8_t txDA = 119;
+    setPLCtxDA(TX_DA_TYPE_LOGICAL, &txDA);
 
-	uint8_t len = 5;
-	uint8_t testData[len];
-	testData[0] = 48;
-	testData[1] = 49;
-	testData[2] = 50;
-	testData[3] = 51;
-	testData[4] = 52; 
+    uint8_t len = 5;
+    uint8_t testData[len];
+    testData[0] = 48;
+    testData[1] = 49;
+    testData[2] = 50;
+    testData[3] = 51;
+    testData[4] = 52;
 
-	fillPLCTxData(testData, len);
-
-	for( ; ; )
-	{
-		sendPLCData(len);
-		vTaskDelay(pdMS_TO_TICKS(8*1000));
-	}
-
+    for (;;)
+    {
+        sendPLCData(testData, len);
+        vTaskDelay(pdMS_TO_TICKS(8 * 1000));
+    }
 }
 
 #endif

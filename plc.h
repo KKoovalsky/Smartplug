@@ -147,6 +147,26 @@
 #include "task.h"
 #include "system.h"
 
+typedef enum 
+{
+	SET_REMOTE_TX_ENABLE = 1,
+	SET_REMOTE_RESET,
+	SET_REMOTE_EXTENDED_ADDR,
+	SET_REMOTE_LOGICAL_ADDR,
+	GET_REMOTE_LOGICAL_ADDR,
+	GET_REMOTE_PHYSICAL_ADDR,
+	GET_REMOTE_STATE,
+	GET_REMOTE_VERSION,
+	SEND_REMOTE_DATA,
+	REQUEST_REMOTE_DATA,
+	RESPONSE_REMOTE_DATA,
+	SET_REMOTE_BIU,
+	SET_REMOTE_THRESHOLD_VALUE,
+	SET_REMOTE_GROUP_MEMBERSHIP,
+	GET_REMOTE_GROUP_MEMBERSHIP
+} PLC_COMMAND_IDS_E;
+
+
 extern TaskHandle_t xPLCTask;
 
 uint8_t readPLCregister(uint8_t reg);
@@ -158,7 +178,7 @@ void setPLCtxAddrType(uint8_t txSAtype, uint8_t txDAtype);
 void setPLCtxDA(uint8_t txDAtype, volatile uint8_t *txDA);
 
 void fillPLCTxData (uint8_t *buf, uint8_t len);
-void sendPLCData(uint8_t len);
+void sendPLCData(uint8_t *buf, uint8_t len);
 
 void setPLCnodeLA(uint8_t logicalAddress);
 void setPLCnodeGA(uint8_t groupAddress);

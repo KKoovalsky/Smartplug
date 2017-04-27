@@ -7,7 +7,7 @@
 
 typedef enum
 {
-    SPIFFS_READ = 1, SPIFFS_WRITE_WIFI_CONF, SPIFFS_WRITE_PLC_CONF
+    SPIFFS_WRITE_WIFI_CONF, SPIFFS_WRITE_PLC_CONF
 } SpiffsMode_t;
 
 typedef struct 
@@ -22,5 +22,7 @@ extern QueueHandle_t xSPIFFSQueue;
 
 void spiffsTask(void *pvParameters);
 void checkFileContent();
+
+//void getWifiCredentials()
 
 #endif
