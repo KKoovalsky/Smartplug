@@ -9,7 +9,7 @@ h2 {
 }
 
 div.sub {
-    margin-bottom: 30px;
+    margin-bottom: 20px;
 }
 
 table.table {
@@ -19,4 +19,8 @@ table.table {
 table tr td {
     padding-left: 25px;
     padding-right: 25px;
+}
+
+.alert_td {
+    color: red;
 }

@@ -12,26 +12,35 @@
 <body>
     <div class="main">
         <div align="center">
-            <h1>Change configuration</h1>
+            <h1>Smartplug configuration panel</h1>
         </div>
+        <div class="sub" align="center" id="status_box"></div>
         <hr width="60%" color="gray">
         <div class="sub" align="center">
             <h2>Broker mode</h2>
             <table class="table" cellspacing="10">
                 <tr>
                     <td><b>Target SSID:</b></td>
-                    <td><input type="text" name="ssid" id="ssid"></td>
+                    <td><input type="text" id="ssid"></td>
+                    <td id="ssid_alert" class="alert_td"></td>
                 </tr>
                 <tr>
                     <td><b>Target password:</b></td>
-                    <td><input type="text" name="password" id="password"></td>
+                    <td><input type="text" id="password"></td>
+                    <td id="password_alert" class="alert_td"></td>
                 </tr>
                 <tr>
                     <td><b>Plugged device:</b></td>
-                    <td><input type="text" name="device_broker" id="device_broker"></td>
+                    <td><input type="text" id="device_broker"></td>
+                    <td id="device_broker_alert" class="alert_td"></td>
+                </tr>
+                <tr>
+                    <td><b>Thingsboard access token:</b></td>
+                    <td><input type="text" id="wifi_things_token"></td>
+                    <td id="wifi_things_token_alert" class="alert_td"></td>
                 </tr>
             </table>
-            <input type="button" name="ok-butt-wifi-opts" id="wifi-opts" value="Set broker mode" onclick="setBrokerMode()">
+            <input type="button" id="wifi-opts" value="Set broker mode" onclick="setBrokerMode()">
         </div>
         <hr width="60%" color="gray">
         <div class="sub" align="center">
@@ -39,17 +48,23 @@
             <table class="table" cellspacing="10">
                 <tr>
                     <td><b>Broker PLC PHY Address:</b></td>
-                    <td><input type="text" name="plc_phy_addr" id="plc_phy_addr"></td>
+                    <td><input type="text" id="plc_phy_addr"></td>
+                    <td id="plc_phy_addr_alert" class="alert_td"></td>
                 </tr>
                 <tr>
                     <td><b>Plugged device:</b></td>
-                    <td><input type="text" name="device_client" id="device_client"></td>
+                    <td><input type="text" id="device_client"></td>
+                    <td id="device_client_alert" class="alert_td"></td>
+                </tr>
+                <tr>
+                    <td><b>Thingsboard access token:</b></td>
+                    <td><input type="text" id="plc_things_token"></td>
+                    <td id="plc_things_token_alert" class="alert_td"></td>
                 </tr>
             </table>
             <input type="button" name="ok-butt-plc-opts" id="plc-opts" value="Set client mode" onclick="setClientMode()">
         </div>
         <hr width="60%" color="gray">
-        <div class="sub" align="center" id="status_box"></div>
     </div>
 
     <script type="text/javascript"></script>
@@ -65,6 +80,18 @@
             sbox = document.getElementById('status_box');
             sbox.innerHTML = text;
             console.log(text);
+        }
+
+        function setAlertMsg(text, id) {
+            console.log(id);
+            var alertBox = document.getElementById(id);
+            alertBox.innerHTML = text;
+        }
+
+        function clearAlertMsgs() {
+            var alertBoxes = document.getElementsByClassName('alert_td');
+            for (var i = 0; i < alertBoxes.length; i++)
+                alertBoxes[i].innerHTML = "";
         }
 
         function disableButtons() {
@@ -103,7 +130,7 @@
                         setMsg("Ready to set configuration.");
                 };
                 ws.onerror = function(evt) {
-                    setMsg("Error connecting to device...");
+                    setMsg("Error while connecting to device...");
                 };
                 ws.onmessage = function(evt) {
                     onMessage(evt);
@@ -122,12 +149,29 @@
 
         function setBrokerMode() {
             var wifi = new Object();
+            clearAlertMsgs();
             wifi.ssid = document.getElementById('ssid').value;
+            if (wifi.ssid == "") {
+                setAlertMsg("WiFi SSID not provided.", 'ssid_alert');
+                return;
+            }
             wifi.password = document.getElementById('password').value;
+            if (wifi.password == "") {
+                setAlertMsg("WiFi password not provided.", 'password_alert');
+                return;
+            }
             wifi.device_plugged = document.getElementById('device_broker').value;
+            if (wifi.device_plugged == "") {
+                setAlertMsg("Device name not provided.", 'device_broker_alert');
+                return;
+            }
+            wifi.tb_token = document.getElementById('wifi_things_token').value;
+            if (wifi.tb_token == "") {
+                setAlertMsg("Thinsgboard device token not provided.", 'wifi_things_token_alert');
+                return;
+            }
             var jsonString = JSON.stringify(wifi);
-            sbox = document.getElementById('status_box');
-            sbox.innerHTML = jsonString;
+            console.log(jsonString);
             wsWrite(jsonString);
             disableButtons();
             setMsg("Configuring...");
@@ -135,11 +179,24 @@
 
         function setClientMode() {
             var plcClient = new Object();
+            clearAlertMsgs();
             plcClient.phyaddr = document.getElementById('plc_phy_addr').value;
+            if (plcClient.phyaddr == "") {
+                setAlertMsg("Broker PLC physical address not provided.", 'plc_phy_addr_alert');
+                return;
+            }
             plcClient.device_plugged = document.getElementById('device_client').value;
+            if (plcClient.device_plugged == "") {
+                setAlertMsg("Device name not provided.", 'device_client_alert');
+                return;
+            }
+            plcClient.tb_token = document.getElementById('plc_things_token').value;
+            if (plcClient.tb_token == "") {
+                setAlertMsg("Thinsgboard device token not provided.", 'plc_things_token_alert');
+                return;
+            }
             var jsonString = JSON.stringify(plcClient);
-            sbox = document.getElementById('status_box');
-            sbox.innerHTML = jsonString;
+            console.log(jsonString);
             wsWrite(jsonString);
             disableButtons();
             setMsg("Configuring...");

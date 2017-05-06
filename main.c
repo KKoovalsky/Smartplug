@@ -52,6 +52,7 @@ void user_init(void)
     xTaskCreate(connectWhileConfigTask, "configConnect", 512, NULL, 3, &xConnectWhileConfigTask);
     xTaskCreate(mqttTask, "MQTT", 1024, NULL, 2, &xMqttTask);
 
+
 #ifdef PLC_TX_TEST
     if (xTaskCreate(plcTestTxTask, "PLC_TX", 256, NULL, 2, NULL) == pdPASS)
         printf("YEP\n\r");

@@ -6,9 +6,9 @@
 //#define PLC_TX_TEST
 
 #ifdef PLC_TX_TEST
-#define WIFI_SSID "I_TAK_NIE_MAM_NETA"
+#define WIFI_SSID "I_TAK_NIE_MAM_NET"
 #else
-#define WIFI_SSID "MAM_NETA_ALE_SIE_NIEDZIELE"
+#define WIFI_SSID "MAM_NETA_ALE_SIE_WTOREK"
 #endif
 
 #define MAX_RETRIES 15
