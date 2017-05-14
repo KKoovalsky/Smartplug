@@ -1,9 +1,9 @@
 #ifndef CLOUD_H
 #define CLOUD_H
 
-#define TEST_ACCESS_TOKEN "hRA7SdfvgsC81iW1u7k1"
+#define TEST_ACCESS_TOKEN "nKszhGeiC3BX0CglY76d"
 
-#define MQTT_HOST "ec2-34-209-113-89.us-west-2.compute.amazonaws.com"
+#define MQTT_HOST "ec2-52-41-163-55.us-west-2.compute.amazonaws.com"
 #define MQTT_PORT 1883
 
 #define MQTT_ID "ESPYOLO"

@@ -2,9 +2,9 @@
 #define PLC_H
 
 #define I2C_ADDR_PIN_FLOATING 1
-// #define HOST_INT_PORT 
-// #define HOST_INT_PIN 
-// #define HOST_INT_NR 
+// #define HOST_INT_PORT
+// #define HOST_INT_PIN
+// #define HOST_INT_NR
 #define BUS_FREE_TIME_BEFORE_STO_STA 550
 
 #if I2C_ADDR_PIN_FLOATING
@@ -81,8 +81,8 @@
 #define TX_DELAY_13MS (1 << 5)
 #define TX_DELAY_19MS (2 << 5)
 #define TX_DELAY_25MS (3 << 5)
-#define MODEM_FSK_BAND_DEV_3KHZ (1 << 3)    // 133.3:130.4 kHz
-#define MODEM_FSK_BAND_DEV_1_5KHZ (0 << 3)  // 133.3:131.8 kHz
+#define MODEM_FSK_BAND_DEV_3KHZ (1 << 3)   // 133.3:130.4 kHz
+#define MODEM_FSK_BAND_DEV_1_5KHZ (0 << 3) // 133.3:131.8 kHz
 #define MODEM_BPS_600 0x00
 #define MODEM_BPS_1200 0x01
 #define MODEM_BPS_1800 0x02
@@ -135,20 +135,33 @@
 #define STATUS_TX_NO_ACK (1 << 4)
 #define STATUS_TX_NO_RESP (1 << 3)
 #define STATUS_RX_PACKET_DROPPED (1 << 2)
-#define STATUS_RX_DATA_AVAIBLE (1 << 1)
+#define STATUS_RX_DATA_AVAILABLE (1 << 1)
 #define STATUS_TX_DATA_SENT (1 << 0)
+
+#define CUSTOM_CMD_REGISTER_NEW_DEV 0x30
+#define CUSTOM_CMD_REGISTRATION_FAILED 0x31
+#define CUSTOM_CMD_REGISTRATION_SUCCESS 0x32
+
+#define PHY_ADDR 0x6A
+
+#define PLCPHY2STR(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5], (a)[6], (a)[7]
 
 #define MASTER_GROUP_ADDR 10
 
 #define MAX_I2C_ATTEMPTS 5
+
+#define MAX_REMOTE_CMD_RETRIES 5
+#define MAX_NACK_RCV 3
 
 #include <stdint.h>
 #include "FreeRTOS.h"
 #include "task.h"
 #include "system.h"
 
-typedef enum 
-{
+#define PLC_TX_BUF_SIZE 8
+#define PLC_TX_BUF_MASK (PLC_TX_BUF_SIZE - 1)
+
+typedef enum {
 	SET_REMOTE_TX_ENABLE = 1,
 	SET_REMOTE_RESET,
 	SET_REMOTE_EXTENDED_ADDR,
@@ -166,8 +179,23 @@ typedef enum
 	GET_REMOTE_GROUP_MEMBERSHIP
 } PLC_COMMAND_IDS_E;
 
+typedef struct plcTxRecord
+{
+	uint8_t data[32];
+	uint8_t phyAddr[8];
+	uint8_t command;
+	uint8_t len;
+	TaskHandle_t taskToNotify;
+} plcTxRecord_s;
 
-extern TaskHandle_t xPLCTask;
+extern plcTxRecord_s plcTxBuf[PLC_TX_BUF_SIZE];
+extern int plcTxBufHead, plcTxBufTail;
+
+extern TaskHandle_t xPLCTaskRcv;
+extern TaskHandle_t xPLCTaskSend;
+extern SemaphoreHandle_t xPLCSendSemaphore;
+
+extern volatile uint8_t plcPhyAddr[];
 
 uint8_t readPLCregister(uint8_t reg);
 void readPLCregisters(uint8_t reg, uint8_t *buf, uint32_t len);
@@ -175,9 +203,9 @@ void writePLCregister(uint8_t reg, uint8_t val);
 void writePLCregisters(uint8_t *buf, uint8_t len);
 
 void setPLCtxAddrType(uint8_t txSAtype, uint8_t txDAtype);
-void setPLCtxDA(uint8_t txDAtype, volatile uint8_t *txDA);
+void setPLCtxDA(uint8_t txDAtype, uint8_t *txDA);
 
-void fillPLCTxData (uint8_t *buf, uint8_t len);
+void fillPLCTxData(uint8_t *buf, uint8_t len);
 void sendPLCData(uint8_t *buf, uint8_t len);
 
 void setPLCnodeLA(uint8_t logicalAddress);
@@ -188,10 +216,10 @@ void readPLCrxPacket(uint8_t *rxCommand, uint8_t *rxData, uint8_t *rxDataLength)
 uint8_t readPLCintRegister(void);
 void initPLCdevice(uint8_t nodeLA);
 
-void plcTask(void *pvParameters);
+void plcTaskRcv(void *pvParameters);
+void plcTaskSend(void *pvParameters);
+void registerNewClientTask(void *pvParameters);
 
-#ifdef PLC_TX_TEST
-void plcTestTxTask(void *pvParameters);
-#endif
+int registerClient(char *brokerPhyAddr, char *tbToken);
 
 #endif

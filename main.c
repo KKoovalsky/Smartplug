@@ -46,17 +46,12 @@ void user_init(void)
     xSPIFFSQueue = xQueueCreate(1, sizeof(PermConfData_s));
     xConnectWhileConfigQueue = xQueueCreate(1, sizeof(PermConfData_s));
 
+	xPLCSendSemaphore = xSemaphoreCreateBinary();
+
     xTaskCreate(blinkTask, "Blink", 256, NULL, 2, NULL);
-    xTaskCreate(plcTask, "PLC", 256, NULL, 3, &xPLCTask);
-    xTaskCreate(spiffsTask, "SPIFFS", 512, NULL, 2, NULL);
+    xTaskCreate(plcTaskRcv, "PLC Rcv", 256, NULL, 3, &xPLCTaskRcv);
+	xTaskCreate(plcTaskSend, "PLC Send", 256, NULL, 3, &xPLCTaskSend);
     xTaskCreate(connectWhileConfigTask, "configConnect", 512, NULL, 3, &xConnectWhileConfigTask);
     xTaskCreate(mqttTask, "MQTT", 1024, NULL, 2, &xMqttTask);
 
-
-#ifdef PLC_TX_TEST
-    if (xTaskCreate(plcTestTxTask, "PLC_TX", 256, NULL, 2, NULL) == pdPASS)
-        printf("YEP\n\r");
-    else
-        printf("NOPE\n\r");
-#endif
 }

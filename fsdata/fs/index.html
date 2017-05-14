@@ -30,11 +30,6 @@
                     <td id="password_alert" class="alert_td"></td>
                 </tr>
                 <tr>
-                    <td><b>Plugged device:</b></td>
-                    <td><input type="text" id="device_broker"></td>
-                    <td id="device_broker_alert" class="alert_td"></td>
-                </tr>
-                <tr>
                     <td><b>Thingsboard access token:</b></td>
                     <td><input type="text" id="wifi_things_token"></td>
                     <td id="wifi_things_token_alert" class="alert_td"></td>
@@ -52,11 +47,6 @@
                     <td id="plc_phy_addr_alert" class="alert_td"></td>
                 </tr>
                 <tr>
-                    <td><b>Plugged device:</b></td>
-                    <td><input type="text" id="device_client"></td>
-                    <td id="device_client_alert" class="alert_td"></td>
-                </tr>
-                <tr>
                     <td><b>Thingsboard access token:</b></td>
                     <td><input type="text" id="plc_things_token"></td>
                     <td id="plc_things_token_alert" class="alert_td"></td>
@@ -71,9 +61,33 @@
     <script>
         var ws;
         var retries;
+        var wsKeepAliveTimerID = 0;
+
+        function wsKeepAlive() {
+            var timeout = 10000;
+            if (ws.readyState == 1) {
+                ws.send('');
+                console.log("Sending keep alive message");
+            } else {
+                wsOpen(null);
+                console.log("Opening WS - WS not kept alive.");
+            }
+            wsKeepAliveTimerID = setTimeout(wsKeepAlive, timeout);
+        }
+
+        function cancelWsKeepAlive() {
+            if (wsKeepAliveTimerID) {
+                clearTimeout(wsKeepAliveTimerID);
+            }
+        }
 
         window.onload = function() {
             wsOpen(null);
+            wsKeepAlive();
+        }
+
+        window.onunload = function() {
+            cancelWsKeepAlive();
         }
 
         function setMsg(text) {
@@ -107,10 +121,12 @@
         function onMessage(evt) {
             retries = 0;
             var data = evt.data;
+            console.log(data);
             var content = JSON.parse(data);
             if (content.data == "enableButtons") {
                 enableButtons();
                 setMsg(content.msg);
+                wsWrite("ACK");
             } else
                 setMsg(data);
         }
@@ -160,11 +176,6 @@
                 setAlertMsg("WiFi password not provided.", 'password_alert');
                 return;
             }
-            wifi.device_plugged = document.getElementById('device_broker').value;
-            if (wifi.device_plugged == "") {
-                setAlertMsg("Device name not provided.", 'device_broker_alert');
-                return;
-            }
             wifi.tb_token = document.getElementById('wifi_things_token').value;
             if (wifi.tb_token == "") {
                 setAlertMsg("Thinsgboard device token not provided.", 'wifi_things_token_alert');
@@ -183,11 +194,6 @@
             plcClient.phyaddr = document.getElementById('plc_phy_addr').value;
             if (plcClient.phyaddr == "") {
                 setAlertMsg("Broker PLC physical address not provided.", 'plc_phy_addr_alert');
-                return;
-            }
-            plcClient.device_plugged = document.getElementById('device_client').value;
-            if (plcClient.device_plugged == "") {
-                setAlertMsg("Device name not provided.", 'device_client_alert');
                 return;
             }
             plcClient.tb_token = document.getElementById('plc_things_token').value;

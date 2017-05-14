@@ -12,17 +12,28 @@ typedef enum
 
 typedef struct 
 {
-    char *SSID, *password, *PLCPhyAddr, *devicePlugged;
-    uint8_t SSIDLen, passwordLen, PLCPhyAddrLen, devicePluggedLen;
+    char *SSID, *password, *PLCPhyAddr, *tbToken;
+    uint8_t SSIDLen, passwordLen, PLCPhyAddrLen, tbTokenLen;
     SpiffsMode_t mode;
 } PermConfData_s;
 
 extern TaskHandle_t xSPIFFSTask;
 extern QueueHandle_t xSPIFFSQueue;
 
-void spiffsTask(void *pvParameters);
-void checkFileContent();
+extern const char clientStr[7];
+extern const char brokerStr[7];
 
-//void getWifiCredentials()
+
+int initFileSystem();
+
+void saveBrokerConfigDataToFile(PermConfData_s *);
+void saveClientConfigDataToFile(PermConfData_s *);
+
+int getDeviceModeFromFile(char *);
+
+void setClientPlcPhyAddrOfBrokerAndTbToken();
+void setBrokerTbTokenFromFile();
+
+void checkFileContent();
 
 #endif

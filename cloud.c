@@ -40,7 +40,7 @@ void mqttTask(void *pvParameters)
 	{
 		printf("Establishing MQTT connection...\n\r");
 		ret = mqtt_network_connect(&network, MQTT_HOST, MQTT_PORT);
-		if (ret)
+		if (ret != MQTT_SUCCESS)
 		{
 			printf("Error connecting to MQTT server: %d\n\r", ret);
 			vTaskDelay(pdMS_TO_TICKS(2000));
@@ -51,7 +51,7 @@ void mqttTask(void *pvParameters)
 
 		mqtt_client_new(&client, &network, 5000, mqttBuf, sizeof(mqttBuf), mqttReadBuf, sizeof(mqttReadBuf));
 		ret = mqtt_connect(&client, &data);
-		if (ret)
+		if (ret != MQTT_SUCCESS)
 		{
 			printf("Error sending MQTT CONNECT: %d\n\r", ret);
 			mqtt_network_disconnect(&network);

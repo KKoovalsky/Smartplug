@@ -8,11 +8,20 @@
 #include "esp8266.h"
 #include "esp/uart.h"
 #include "system.h"
+#include "client_list.h"
 
 #define DEBUG_PLC
 #define HOST_INT_PIN 13
 
-TaskHandle_t xPLCTask;
+TaskHandle_t xPLCTaskRcv;
+TaskHandle_t xPLCTaskSend;
+TaskHandle_t xTaskNewClientRegis;
+SemaphoreHandle_t xPLCSendSemaphore;
+
+plcTxRecord_s plcTxBuf[PLC_TX_BUF_SIZE];
+int plcTxBufHead, plcTxBufTail;
+
+volatile uint8_t plcPhyAddr[8];
 
 static void hostIntPinHandler(uint8_t pin);
 
@@ -97,7 +106,7 @@ void setPLCtxAddrType(uint8_t txSAtype, uint8_t txDAtype)
     writePLCregister(TX_CONFIG_REG, configRegValue | txSAtype | txDAtype);
 }
 
-void setPLCtxDA(uint8_t txDAtype, volatile uint8_t *txDA)
+void setPLCtxDA(uint8_t txDAtype, uint8_t *txDA)
 {
     //  W zależności od typu adresu DA zapisujemy odpowiednią
     //  ilość bajtów adresu DA
@@ -198,7 +207,7 @@ void initPLCdevice(uint8_t nodeLA)
     writePLCregister(MODEM_CONFIG_REG, MODEM_BPS_2400 | MODEM_FSK_BAND_DEV_3KHZ);
     //	Uruchomienie przerwań dla wybranych zdarzeń (aktywny poziom niski na wyprowadzeniu HOST_INT)
     writePLCregister(INTERRUPT_ENABLE_REG, INT_POLARITY_LOW | INT_UNABLE_TO_TX |
-                                               INT_TX_NO_ACK | INT_TX_NO_RESP | INT_RX_DATA_AVAILABLE | INT_TX_DATA_SENT);
+			INT_TX_NO_ACK | INT_TX_NO_RESP | INT_RX_DATA_AVAILABLE | INT_TX_DATA_SENT);
     //	Ustawienie trybu potwierdzania pakietów danych oraz liczby prób
     //	transmisji = 5 (domyślne logiczne typy adresów SA i DA)
     writePLCregister(TX_CONFIG_REG, TX_SERVICE_ACKNOWLEDGED | 0x05);
@@ -206,9 +215,11 @@ void initPLCdevice(uint8_t nodeLA)
     writePLCregister(TX_GAIN_REG, TX_GAIN_LEVEL_3000MV);
     //	Ustawienie czułości dla modułu odbiornika PLC
     writePLCregister(RX_GAIN_REG, RX_GAIN_LEVEL_250UV);
-    setPLCnodeLA(nodeLA); //	Ustawienie numeru LA modemu PLC
-                          //	Ustawienie adresu Grupowego modemu PLC
+	//	Ustawienie numeru LA modemu PLC
+    setPLCnodeLA(nodeLA); 
+	//	Ustawienie adresu Grupowego modemu PLC
     setPLCnodeGA(MASTER_GROUP_ADDR);
+	setPLCtxAddrType(TX_SA_TYPE_PHYSICAL, TX_DA_TYPE_PHYSICAL);
 }
 
 void fillPLCTxData(uint8_t *buf, uint8_t len)
@@ -219,6 +230,8 @@ void fillPLCTxData(uint8_t *buf, uint8_t len)
         printf("Internal CY8CPLC10 buffer is shorter than len\n\r");
         return;
     }
+
+	if(len == 0) return;
 
     uint8_t buffer[33];
     // Wypełnij bufor nadawczy modemu PLC
@@ -239,59 +252,210 @@ void sendPLCData(uint8_t *buf, uint8_t len)
 static void hostIntPinHandler(uint8_t pin)
 {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    vTaskNotifyGiveFromISR(xPLCTask, &xHigherPriorityTaskWoken);
+	if(xPLCTaskRcv)
+    	vTaskNotifyGiveFromISR(xPLCTaskRcv, &xHigherPriorityTaskWoken);
     portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
 }
 
-void plcTask(void *pvParameters)
+void plcTaskRcv(void *pvParameters)
 {
-    vTaskDelay(pdMS_TO_TICKS(2 * 1000));
-    printf("Initializing PLC at address %d\n", PLC_WRITE_ADDR);
-
-#ifdef PLC_TX_TEST
-    initPLCdevice(120);
-#else
-    initPLCdevice(119);
-#endif
-    // Read Physical Address
-    uint8_t phyAddr[8];
-    readPLCregisters(0x6A, phyAddr, 8);
-    printf("%d %d %d %d %d %d %d %d\n\r", phyAddr[0], phyAddr[1], phyAddr[2], phyAddr[3], phyAddr[4],
-           phyAddr[5], phyAddr[6], phyAddr[7]);
-
     for (;;)
     {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        unsigned int temp = readPLCintRegister();
-        printf("Got some data from PLC: %d\n\r", temp);
+        unsigned int intRegContent = readPLCintRegister();
+        printf("Got some data from PLC: %d\n\r", intRegContent);
+		switch(intRegContent)
+		{
+			case STATUS_RX_DATA_AVAILABLE:
+			{
+				int result = 0;
+				unsigned int cmdReg = readPLCregister(RX_COMMAND_ID_REG);
+				printf("PLC: New RX data available.\n\r");
+				switch(cmdReg)
+				{
+					case CUSTOM_CMD_REGISTER_NEW_DEV:
+						if(devType != BROKER) break;
+						xTaskCreate(registerNewClientTask, "Regis", 256, NULL, 4, &xTaskNewClientRegis);
+						break;
+					case CUSTOM_CMD_REGISTRATION_FAILED:
+						result = -2;
+					case CUSTOM_CMD_REGISTRATION_SUCCESS:
+						if(xConnectWhileConfigTask)
+							xTaskNotify(xConnectWhileConfigTask, result, eSetValueWithoutOverwrite);
+						break;
+				}
+				break;
+			}
+			case STATUS_TX_NO_ACK:
+			{
+				static int nackCnt = MAX_NACK_RCV;
+				nackCnt --;
+				printf("PLC: No ACK received.\n\r");
+				if(!nackCnt)
+				{
+					plcTxRecord_s *txRec = &plcTxBuf[plcTxBufTail];
+					if(txRec->taskToNotify) 
+						xTaskNotify(txRec->taskToNotify, -1, eSetValueWithoutOverwrite);
+
+					nackCnt = MAX_NACK_RCV;
+					plcTxBufTail = (plcTxBufTail + 1) & PLC_TX_BUF_MASK;
+				}
+				xSemaphoreGive(xPLCSendSemaphore);
+				break;
+			}
+			case STATUS_TX_NO_RESP:
+			{
+				static int noRespCnt = MAX_REMOTE_CMD_RETRIES;
+				noRespCnt --;
+				printf("PLC: No response received.\n\r");
+				if(!noRespCnt)
+				{
+					plcTxRecord_s *txRec = &plcTxBuf[plcTxBufTail];
+					if(txRec->taskToNotify) 
+						xTaskNotify(txRec->taskToNotify, -3, eSetValueWithoutOverwrite);
+						
+					noRespCnt = MAX_REMOTE_CMD_RETRIES;
+					plcTxBufTail = (plcTxBufTail + 1) & PLC_TX_BUF_MASK;
+				}
+				xSemaphoreGive(xPLCSendSemaphore);
+				break;
+			}
+			case STATUS_TX_DATA_SENT:
+			{
+				plcTxRecord_s *txRec = &plcTxBuf[plcTxBufTail];
+				if(txRec->taskToNotify) 
+					xTaskNotify(txRec->taskToNotify, 0, eSetValueWithoutOverwrite);
+
+				plcTxBufTail = (plcTxBufTail + 1) & PLC_TX_BUF_MASK;
+
+				printf("PLC: Data sent.\n\r");
+				xSemaphoreGive(xPLCSendSemaphore);
+				break;
+			}
+			default:
+				printf("Wrong PLC Interrupt register content: %d\n\r", intRegContent);
+				break;
+		}
     }
 }
 
-#ifdef PLC_TX_TEST
-void plcTestTxTask(void *pvParameters)
+void plcTaskSend(void *pvParameters)
 {
-    vTaskDelay(pdMS_TO_TICKS(4 * 1000));
+	xSemaphoreGive(xPLCSendSemaphore);
 
-    printf("Deske lau\n\r");
+	for(;;)
+	{
+		// Task notification receiving implemented to speed up sending of data.
+		ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(10));
 
-    setPLCtxAddrType(TX_SA_TYPE_LOGICAL, TX_DA_TYPE_LOGICAL);
+		while(plcTxBufHead != plcTxBufTail)
+		{
+			if(xSemaphoreTake(xPLCSendSemaphore, pdMS_TO_TICKS(10)))
+			{
+				plcTxRecord_s *txRec = &plcTxBuf[plcTxBufTail];
+				
+				if(txRec->len)
+					fillPLCTxData(txRec->data, txRec->len);
 
-    uint8_t txDA = 119;
-    setPLCtxDA(TX_DA_TYPE_LOGICAL, &txDA);
+				writePLCregister(TX_COMMAND_ID_REG, txRec->command);
 
-    uint8_t len = 5;
-    uint8_t testData[len];
-    testData[0] = 48;
-    testData[1] = 49;
-    testData[2] = 50;
-    testData[3] = 51;
-    testData[4] = 52;
+				setPLCtxDA(TX_DA_TYPE_PHYSICAL, txRec->phyAddr);
 
-    for (;;)
-    {
-        sendPLCData(testData, len);
-        vTaskDelay(pdMS_TO_TICKS(8 * 1000));
-    }
+				writePLCregister(TX_MESSAGE_LENGTH_REG, txRec->len | SEND_MESSAGE);
+			}
+		}
+	}
 }
 
-#endif
+
+// TODO: byte type signedness standarization
+// TODO: split into different files client side and broker side functions.
+int registerClient(char *brokerPhyAddr, char *tbToken)
+{
+	plcTxRecord_s *txRec = &plcTxBuf[plcTxBufHead];
+	txRec->len = 20; 
+	txRec->command = CUSTOM_CMD_REGISTER_NEW_DEV;
+	txRec->taskToNotify = xConnectWhileConfigTask;
+
+	memcpy(txRec->phyAddr, brokerPhyAddr, 8);
+	memcpy(txRec->data, tbToken, 20);
+
+	plcTxBufHead = (plcTxBufHead + 1) & PLC_TX_BUF_MASK;
+
+	xTaskNotifyGive(xPLCTaskSend);
+
+	// First notification received with information if TX data acknowledged.
+	uint32_t result;
+	if(xTaskNotifyWait(0, 0xFFFFFFFF, &result, pdMS_TO_TICKS(5000)) != pdTRUE)
+		result = -1;
+
+	if(result == 0)
+	{
+		if(xTaskNotifyWait(0, 0xFFFFFFFF, &result, pdMS_TO_TICKS(5000)) != pdTRUE)
+			result = -1;
+	}
+
+	return result;
+}
+
+void registerNewClientTask(void *pvParameters)
+{
+	uint8_t packetLen, command;
+	client_s *newClient = (client_s *) pvPortMalloc (sizeof(client_s));
+	readPLCrxPacket(&command, (uint8_t *)newClient->tbToken, &packetLen);
+
+	plcTxRecord_s *txRec = &plcTxBuf[plcTxBufHead];
+	getPLCrxSA(txRec->phyAddr);
+	memcpy(newClient->plcPhyAddr, txRec->phyAddr, 8);
+
+	if(packetLen != 20)
+	{
+		vPortFree(newClient);
+		txRec->len = 0;
+		txRec->command = CUSTOM_CMD_REGISTRATION_FAILED;
+		txRec->taskToNotify = NULL;
+
+		plcTxBufHead = (plcTxBufHead + 1) & PLC_TX_BUF_MASK;
+		xTaskNotifyGive(xPLCTaskSend);
+	} else 
+	{
+		// TODO: Check now if Thingsboard token is valid 
+		txRec->len = 0;
+		txRec->command = CUSTOM_CMD_REGISTRATION_SUCCESS;
+		txRec->taskToNotify = xTaskNewClientRegis;
+
+		plcTxBufHead = (plcTxBufHead + 1) & PLC_TX_BUF_MASK;
+		xTaskNotifyGive(xPLCTaskSend);
+
+		uint32_t result;
+		if(xTaskNotifyWait(0, 0xFFFFFFFF, &result, pdMS_TO_TICKS(5000)) != pdTRUE)
+		{
+			result = -1;
+			txRec->taskToNotify = NULL;
+		}
+
+		if(result < 0)
+		{
+			vPortFree(newClient);
+			// TODO: Here can be checked what happened exactly (switch(result))
+			switch(result)
+			{
+				case -1:
+					printf("ERROR: Registration confirmation not acknowledged. Registration aborted.\n\r");
+					break;
+				case -3:
+					printf("ERROR: Response not received. Registration aborted.\n\r");
+					break;
+				default:
+					printf("ERROR: Undefined: %d\n\r", result);
+			}
+			printf("ERROR: Registration confirmation not acknowledged. Not registering.\n\r");
+		} else 
+		{
+			printf("Registration successful\n\r");
+			addClient(newClient);
+		}
+	}
+
+	vTaskDelete(NULL);
+}

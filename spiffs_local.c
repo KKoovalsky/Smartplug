@@ -13,6 +13,7 @@
 #include "spiffs_local.h"
 #include "http_server.h"
 #include "system.h"
+#include "plc.h"
 
 const char clientStr[] = "CLIENT";
 const char brokerStr[] = "BROKER";
@@ -22,131 +23,137 @@ QueueHandle_t xSPIFFSQueue;
 
 /* TODO:    1. Use O_RDWR in place of O_WRONLY (problems occured when using o_RDWR)
             2. Delete rubbish at the end of file, 
-                which are leftovers from past config data, which was longer than now. 
-            3. Create one file for configuration data instead of wifi.conf and plc.conf*/
+                which are leftovers from past config data, which was longer than now. */
 
-void spiffsTask(void *pvParameters)
+int initFileSystem()
 {
-    esp_spiffs_init();
+	esp_spiffs_init();
 
-    if (esp_spiffs_mount() != SPIFFS_OK)
-    {
-        printf("Error mounting SPIFFS\n");
-        vTaskDelete(NULL);
-    }
+	if (esp_spiffs_mount() != SPIFFS_OK)
+	{
+		printf("Error mounting SPIFFS\n");
+		return -1;
+	}
 
-    // Read file which contains mode of operation.
-    int fd = open("mode.conf", O_RDONLY, 0);
-    if (fd < 0)
-    {
-        printf("Error opening file mode.conf\n");
-        vTaskDelete(NULL);
-    }
+	return 0;
+}
 
-    char buffer[8];
-    lseek(fd, 0, SEEK_SET);
-    read(fd, buffer, sizeof(buffer));
-    close(fd);
-    if (!strncmp(buffer, clientStr, sizeof(clientStr) - 1))
-    {
-        startClientMode();
-    }
-    else if (!strncmp(buffer, brokerStr, sizeof(brokerStr) - 1))
-    {
-        startBrokerMode(1);
-    }
-    else // If its first run of this device, then start HTTP server to get configuration
-    {
-        printf("First run of the device\n");
-        setAP_STA();
-        xTaskCreate(httpd_task, "HTTP Daemon", 128, NULL, 2, &xHTTPServerTask);
-    }
+void saveBrokerConfigDataToFile(PermConfData_s *configData)
+{
+	int fd = open("smartplug.conf", O_WRONLY, 0);
+	if (fd < 0)
+	{
+		printf("Error opening configuration file\n");
+		return;
+	}
 
-    for (;;)
-    {
-        PermConfData_s configData;
-        xQueueReceive(xSPIFFSQueue, &configData, portMAX_DELAY);
+	lseek(fd, 0, SEEK_SET);
 
-        printf("Configuring...\n");
+	write(fd, brokerStr, sizeof(brokerStr) - 1);
+	write(fd, "\n", 1);
+	write(fd, configData->SSID, configData->SSIDLen);
+	write(fd, "\n", 1);
+	write(fd, configData->password, configData->passwordLen);
+	write(fd, "\n", 1);
+	write(fd, configData->tbToken, configData->tbTokenLen);
 
-        // Set device plugged name.
-        int fd = open("id.conf", O_WRONLY, 0);
-        if (fd < 0)
-        {
-            printf("Error opening file id.conf\n");
-            continue;
-        }
-        lseek(fd, 0, SEEK_SET);
-        write(fd, configData.devicePlugged, strlen(configData.devicePlugged));
-        write(fd, "\n", 1);
-        close(fd);
+	close(fd);
+}
 
-        if (configData.mode == SPIFFS_WRITE_WIFI_CONF)
-        {
-            int fd = open("mode.conf", O_WRONLY, 0);
-            if (fd < 0)
-            {
-                printf("Error opening file mode.conf\n");
-                continue;
-            }
+void saveClientConfigDataToFile(PermConfData_s *configData)
+{
+	int fd = open("smartplug.conf", O_WRONLY, 0);
+	if (fd < 0)
+	{
+		printf("Error opening configuration file\n");
+		return;
+	}
 
-            lseek(fd, 0, SEEK_SET);
-            write(fd, brokerStr, sizeof(brokerStr) - 1);
-            write(fd, "\n", 1);
-            write(fd, configData.SSID, configData.SSIDLen);
-            write(fd, "\n", 1);
-            write(fd, configData.password, configData.passwordLen);
-            write(fd, "\n", 1);
+	lseek(fd, 0, SEEK_SET);
 
-            printf("%s %s\n", configData.SSID, configData.password);
+	write(fd, clientStr, sizeof(clientStr) - 1);
+	write(fd, "\n", 1);
+	write(fd, configData->PLCPhyAddr, configData->PLCPhyAddrLen);
+	write(fd, "\n", 1);
+	write(fd, configData->tbToken, configData->tbTokenLen);
 
-            close(fd);
+	close(fd);
+}
 
-            vPortFree(configData.SSID);
-            vPortFree(configData.password);
-        }
-        else if (configData.mode == SPIFFS_WRITE_PLC_CONF)
-        {
-            int fd = open("mode.conf", O_WRONLY, 0);
-            if (fd < 0)
-            {
-                printf("Error opening file plc.conf\n");
-                continue;
-            }
+int getDeviceModeFromFile(char *buf)
+{
+	// Read file which contains mode of operation.
+	int fd = open("smartplug.conf", O_RDONLY, 0);
+	if (fd < 0)
+	{
+		printf("Error opening configuration file.\n");
+		return -1;
+	}
 
-            lseek(fd, 0, SEEK_SET);
+	lseek(fd, 0, SEEK_SET);
+	read(fd, buf, 6);
+	close(fd);
 
-            write(fd, clientStr, sizeof(clientStr) - 1);
-            write(fd, "\n", 1);
-            write(fd, configData.PLCPhyAddr, configData.PLCPhyAddrLen);
-            write(fd, "\n", 1);
+	return 0;
+}
 
-            close(fd);
+void setClientPlcPhyAddrOfBrokerAndTbToken()
+{
+	char buffer[44];
+	int fd = open("smartplug.conf", O_RDONLY, 0);
+	if (fd < 0)
+	{
+		printf("Error opening configuration file.\n");
+		return;
+	}
 
-            vPortFree(configData.PLCPhyAddr);
-        }
-        else
-        {
-            printf("Unknown SPIFFS mode\n");
-        }
-    }
+	lseek(fd, 0, SEEK_SET);
+	read(fd, buffer, sizeof(buffer));
+	close(fd);
+
+	char *p = strtok(buffer, "\n");
+	p = strtok(buffer, "\n");
+	parsePLCPhyAddress((char *)p, (char *)plcPhyAddr);
+	p = strtok(buffer, "\n");
+	memcpy((char *)myTbToken, p, 20);
+}
+
+void setBrokerTbTokenFromFile()
+{
+	char buffer[132];
+	int fd = open("smartplug.conf", O_RDONLY, 0);
+	if (fd < 0)
+	{
+		printf("Error opening configuration file.\n");
+		return;
+	}
+
+	lseek(fd, 0, SEEK_SET);
+	read(fd, buffer, sizeof(buffer));
+	close(fd);
+
+	char *p = strtok(buffer, "\n");
+	p = strtok(buffer, "\n");
+	p = strtok(buffer, "\n");
+	p = strtok(buffer, "\n");
+	memcpy((char *)myTbToken, p, 20);
 }
 
 void checkFileContent()
 {
-    char buffer[146];
-    memset(buffer, 0, sizeof(buffer));
+	char buffer[146];
+	memset(buffer, 0, sizeof(buffer));
 
-    int fd = open("data", O_RDONLY, 0);
-    if (fd < 0)
-    {
-        printf("Error opening file\n");
-        return;
-    }
+	int fd = open("smartplug.conf", O_RDONLY, 0);
+	if (fd < 0)
+	{
+		printf("Error opening file\n");
+		return;
+	}
 
-    lseek(fd, 0, SEEK_SET);
-    read(fd, buffer, sizeof(buffer));
-    printf("%s\n", buffer);
+	lseek(fd, 0, SEEK_SET);
+	read(fd, buffer, sizeof(buffer));
+	printf("%s\n", buffer);
 
-    close(fd);
+	close(fd);
 }
