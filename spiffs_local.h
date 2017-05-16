@@ -5,24 +5,10 @@
 #include "task.h"
 #include "queue.h"
 
-typedef enum
-{
-    SPIFFS_WRITE_WIFI_CONF, SPIFFS_WRITE_PLC_CONF
-} SpiffsMode_t;
-
-typedef struct 
-{
-    char *SSID, *password, *PLCPhyAddr, *tbToken;
-    uint8_t SSIDLen, passwordLen, PLCPhyAddrLen, tbTokenLen;
-    SpiffsMode_t mode;
-} PermConfData_s;
-
-extern TaskHandle_t xSPIFFSTask;
-extern QueueHandle_t xSPIFFSQueue;
+typedef struct PermConfData PermConfData_s;
 
 extern const char clientStr[7];
 extern const char brokerStr[7];
-
 
 int initFileSystem();
 
@@ -31,9 +17,9 @@ void saveClientConfigDataToFile(PermConfData_s *);
 
 int getDeviceModeFromFile(char *);
 
-void setClientPlcPhyAddrOfBrokerAndTbToken();
+void setClientPlcPhyAddrOfBrokerAndTbTokenFromFile();
 void setBrokerTbTokenFromFile();
 
-void checkFileContent();
+void printFileContent();
 
 #endif

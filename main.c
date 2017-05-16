@@ -43,15 +43,14 @@ void user_init(void)
 
     sdk_wifi_station_set_auto_connect(0);
     
-    xSPIFFSQueue = xQueueCreate(1, sizeof(PermConfData_s));
-    xConnectWhileConfigQueue = xQueueCreate(1, sizeof(PermConfData_s));
+    xInitializerQueue = xQueueCreate(1, sizeof(PermConfData_s));
 
-	xPLCSendSemaphore = xSemaphoreCreateBinary();
+	xPLCSendSemaphore = xSemaphoreCreateMutex();
 
     xTaskCreate(blinkTask, "Blink", 256, NULL, 2, NULL);
     xTaskCreate(plcTaskRcv, "PLC Rcv", 256, NULL, 3, &xPLCTaskRcv);
 	xTaskCreate(plcTaskSend, "PLC Send", 256, NULL, 3, &xPLCTaskSend);
-    xTaskCreate(connectWhileConfigTask, "configConnect", 512, NULL, 3, &xConnectWhileConfigTask);
+    xTaskCreate(initializerTask, "configConnect", 512, NULL, 3, &xInitializerTask);
     xTaskCreate(mqttTask, "MQTT", 1024, NULL, 2, &xMqttTask);
 
 }

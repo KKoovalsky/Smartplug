@@ -18,9 +18,6 @@
 const char clientStr[] = "CLIENT";
 const char brokerStr[] = "BROKER";
 
-TaskHandle_t xSPIFFSTask;
-QueueHandle_t xSPIFFSQueue;
-
 /* TODO:    1. Use O_RDWR in place of O_WRONLY (problems occured when using o_RDWR)
             2. Delete rubbish at the end of file, 
                 which are leftovers from past config data, which was longer than now. */
@@ -97,7 +94,7 @@ int getDeviceModeFromFile(char *buf)
 	return 0;
 }
 
-void setClientPlcPhyAddrOfBrokerAndTbToken()
+void setClientPlcPhyAddrOfBrokerAndTbTokenFromFile()
 {
 	char buffer[44];
 	int fd = open("smartplug.conf", O_RDONLY, 0);
@@ -113,7 +110,7 @@ void setClientPlcPhyAddrOfBrokerAndTbToken()
 
 	char *p = strtok(buffer, "\n");
 	p = strtok(buffer, "\n");
-	parsePLCPhyAddress((char *)p, (char *)plcPhyAddr);
+	parsePLCPhyAddress((char *)p, (uint8_t *)plcPhyAddr);
 	p = strtok(buffer, "\n");
 	memcpy((char *)myTbToken, p, 20);
 }
@@ -139,7 +136,7 @@ void setBrokerTbTokenFromFile()
 	memcpy((char *)myTbToken, p, 20);
 }
 
-void checkFileContent()
+void printFileContent()
 {
 	char buffer[146];
 	memset(buffer, 0, sizeof(buffer));

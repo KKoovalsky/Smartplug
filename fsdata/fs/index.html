@@ -125,10 +125,11 @@
             var content = JSON.parse(data);
             if (content.data == "enableButtons") {
                 enableButtons();
-                setMsg(content.msg);
                 wsWrite("ACK");
-            } else
-                setMsg(data);
+            } else if (content.data == "stopWs") {
+                cancelWsKeepAlive();
+            }
+            setMsg(content.msg);
         }
 
         function wsOpen(data) {

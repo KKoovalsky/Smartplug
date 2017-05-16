@@ -16,8 +16,8 @@
 #include "spiffs.h"
 #include "esp_spiffs.h"
 
-QueueHandle_t xConnectWhileConfigQueue;
-TaskHandle_t xConnectWhileConfigTask;
+QueueHandle_t xInitializerQueue;
+TaskHandle_t xInitializerTask;
 
 volatile int devType;
 volatile char myTbToken[20];
@@ -25,18 +25,18 @@ volatile char myTbToken[20];
 // TODO: Check if Thingsboard token is correct
 // TODO: Get rid of small mallocs.
 
-static void startBrokerMode();
-static void startClientMode();
+static void startBrokerMode(bool isBoot);
+static void startClientMode(bool isBoot);
 
 static void initPlcTimerClbk(TimerHandle_t xTimer);
-static void initBrokersPlcPhyAddrFromDev(TimerHandle_t xTimer);
 
 static inline void setMyTbToken(char *tbToken);
-static inline void setPlcPhyAddrFromDev();
+static inline void setPlcPhyAddrFromPLCChip();
 static void setAP_STA();
 static void connectToStation(char *SSID, char *password, int SSIDLen, int passwordLen);
+static inline void fillJsonConnectionSuccessStringWithPlcPhyAddr();
 
-void connectWhileConfigTask(void *pvParameters)
+void initializerTask(void *pvParameters)
 {
 	if (initFileSystem() < 0)
 		vTaskDelete(NULL);
@@ -45,24 +45,19 @@ void connectWhileConfigTask(void *pvParameters)
 	if (getDeviceModeFromFile(buffer) < 0)
 		vTaskDelete(NULL);
 
+	// PLC Chip initialization after two seconds to wait for device startup.
+	TimerHandle_t plcInitTimer = xTimerCreate("PLC init", pdMS_TO_TICKS(2000), pdFALSE, 0, initPlcTimerClbk);
+	xTimerStart(plcInitTimer, 0);
+
+	// Check if device is already configured as client or broker, otherwise start HTTP server to get configuration.
 	if (!strncmp(buffer, clientStr, sizeof(clientStr) - 1))
 	{
-		checkFileContent();
-		setClientPlcPhyAddrOfBrokerAndTbToken();
-		startClientMode();
+		startClientMode(true);
 		vTaskDelete(NULL);
 	}
 	else if (!strncmp(buffer, brokerStr, sizeof(brokerStr) - 1))
 	{
-		checkFileContent();
-		setBrokerTbTokenFromFile();
-		startBrokerMode();
-		sdk_wifi_station_connect();
-
-		TimerHandle_t plcPhyAddrInitTimer = xTimerCreate("PLC init", pdMS_TO_TICKS(2000), pdFALSE, 0, 
-			initBrokersPlcPhyAddrFromDev);
-		xTimerStart(plcPhyAddrInitTimer, 0);
-
+		startBrokerMode(true);
 		vTaskDelete(NULL);
 	}
 	else // If its first run of this device, then start HTTP server to get configuration
@@ -75,99 +70,64 @@ void connectWhileConfigTask(void *pvParameters)
 	for (;;)
 	{
 		PermConfData_s configData;
-		xQueueReceive(xConnectWhileConfigQueue, &configData, portMAX_DELAY);
+		xQueueReceive(xInitializerQueue, &configData, portMAX_DELAY);
 
-		if (configData.mode == SPIFFS_WRITE_WIFI_CONF)
+		if (configData.mode == WRITE_WIFI_CONF)
 		{
 			connectToStation(configData.SSID, configData.password, configData.SSIDLen, configData.passwordLen);
-			bool abort = false;
 			int retries = MAX_RETRIES;
-			unsigned int status;
-			while (1)
+			unsigned int status = (unsigned int)sdk_wifi_station_get_connect_status();
+
+			while (status == STATION_CONNECTING && retries)
 			{
+				printf("WiFi: connecting...\r\n");
 				vTaskDelay(pdMS_TO_TICKS(3000));
 				status = (unsigned int)sdk_wifi_station_get_connect_status();
-				if (status == STATION_WRONG_PASSWORD)
-				{
-					printf("WiFi: wrong password\n\r");
-					abort = true;
-					break;
-				}
-				else if (status == STATION_NO_AP_FOUND)
-				{
-					printf("WiFi: AP not found\n\r");
-					abort = true;
-					break;
-				}
-				else if (status == STATION_CONNECT_FAIL)
-				{
-					printf("WiFi: connection failed\r\n");
-					abort = true;
-					break;
-				}
-				else if (status == STATION_CONNECTING)
-				{
-					printf("WiFi: connecting...\r\n");
-					if (!retries)
-					{
-						printf("WiFi: could not connect to device.\r\n");
-						abort = true;
-						break;
-					}
-					--retries;
-					continue;
-				}
-				else if (status == STATION_IDLE)
-				{
-					printf("WiFi: idle mode\r\n");
-					abort = true;
-					break;
-				}
-				else
-				{
-					setPlcPhyAddrFromDev();
-					setMyTbToken(configData.tbToken);
-					/* Add PLC phy address to enable client connection to broker in the future.
-					 * Offset is set at 18 position from end of string because it should omit
-					 * one '}', one '"' and sixteen '-' characters. 
-					 */
-					char plcPhyAddrStr[20];
-					snprintf((char *)plcPhyAddrStr, sizeof(plcPhyAddrStr), "%02x%02x%02x%02x%02x%02x%02x%02x",
-							 PLCPHY2STR(plcPhyAddr));
-					memcpy((uint8_t *)(wifiConnectionSuccessJson + wifiConnectionSuccessJsonLen - 18),
-						   plcPhyAddrStr, 16);
-
-					xWSGetAckTaskHandle = xConnectWhileConfigTask;
-
-					sendWsResponse(wifiConnectionSuccessJson, wifiConnectionSuccessJsonLen);
-
-					printf("WiFi: succesfully connected to AP\r\n");
-
-					saveBrokerConfigDataToFile(&configData);
-
-					ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(10000));
-
-					startBrokerMode();
-
-					// Free memory and delete this task
-					vPortFree(configData.SSID);
-					vPortFree(configData.password);
-					vPortFree(configData.tbToken);
-					vTaskDelete(NULL);
-				}
+				retries--;
 			}
 
-			if (abort)
+			if (!retries)
+				printf("Too long time spent on connecting. Leaving...\n\r");
+
+			if (status == STATION_GOT_IP)
 			{
-				sdk_wifi_station_disconnect();
+				// Set global Thingsboard token, which was passed by user.
+				setMyTbToken(configData.tbToken);
+
+				// Add PLC phy address to enable client connection to broker in the future.
+				fillJsonConnectionSuccessStringWithPlcPhyAddr();
+
+				// Subscribe to get notification when ACK via websocket will be sent.
+				xWSGetAckTaskHandle = xInitializerTask;
+
+				// Send JSON data that connection was successful
+				sendWsResponse(wifiConnectionSuccessJson, wifiConnectionSuccessJsonLen);
+
+				printf("WiFi: succesfully connected to AP\r\n");
+
+				// Save the data to be available after reset/power down.
+				saveBrokerConfigDataToFile(&configData);
+
+				// Wait for ACK from websocket
+				ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(10000));
+
+				startBrokerMode(false);
+
+				// Free memory and delete this task
 				vPortFree(configData.SSID);
 				vPortFree(configData.password);
 				vPortFree(configData.tbToken);
+				vTaskDelete(NULL);
 			}
+
+			sdk_wifi_station_disconnect();
+			vPortFree(configData.SSID);
+			vPortFree(configData.password);
+			vPortFree(configData.tbToken);
 
 			sendWsResponse(wifiJsonStrings[status], wifiJsonStringsLen[status]);
 		}
-		else if (configData.mode == SPIFFS_WRITE_PLC_CONF)
+		else if (configData.mode == WRITE_PLC_CONF)
 		{
 			if (configData.PLCPhyAddrLen < 16)
 			{
@@ -179,15 +139,15 @@ void connectWhileConfigTask(void *pvParameters)
 			}
 
 			uint8_t destPhyAddr[8];
-			parsePLCPhyAddress((char *) configData.PLCPhyAddr, (char *) destPhyAddr);
+			parsePLCPhyAddress((char *)configData.PLCPhyAddr, destPhyAddr);
 
-			if (registerClient((char *) destPhyAddr, configData.tbToken) >= 0)
+			if (registerClient((char *)destPhyAddr, configData.tbToken) >= 0)
 			{
-				printf("Client registration successful.");
+				printf("Client registration successful.\n\r");
 				memcpy((char *)plcPhyAddr, destPhyAddr, 8);
 				setMyTbToken(configData.tbToken);
 
-				xWSGetAckTaskHandle = xConnectWhileConfigTask;
+				xWSGetAckTaskHandle = xInitializerTask;
 
 				sendWsResponse(plcJsonRegisSuccessStr, plcJsonRegisSuccessStrLen);
 
@@ -195,7 +155,7 @@ void connectWhileConfigTask(void *pvParameters)
 
 				ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(10000));
 
-				startClientMode(0);
+				startClientMode(false);
 
 				vPortFree(configData.PLCPhyAddr);
 				vPortFree(configData.tbToken);
@@ -214,41 +174,54 @@ void connectWhileConfigTask(void *pvParameters)
 	}
 }
 
-void parsePLCPhyAddress(char *asciiSrc, char *binDest)
+static uint8_t getUint8FromHexChar(char c)
+{
+	if (c >= '0' && c <= '9')
+		c -= '0';
+	else if (c >= 'A' && c <= 'Z')
+		c -= 'A';
+	else if (c >= 'a' && c <= 'z')
+		c -= 'a';
+	else
+		c = 0;
+
+	return (uint8_t)c;
+}
+
+void parsePLCPhyAddress(char *asciiSrc, uint8_t *binDest)
 {
 	for (int i = 0; i < 8; i++)
 	{
-		sscanf(asciiSrc, "%2hhx", &binDest[i]);
+		binDest[i] = (uint8_t)(getUint8FromHexChar(*asciiSrc) << 4) | (getUint8FromHexChar(*(asciiSrc + 1)));
 		asciiSrc += 2;
 	}
 }
 
-static void startBrokerMode()
+static void startBrokerMode(bool isBoot)
 {
 	devType = BROKER;
-
-	printf("Starting broker mode\n");
-
+	if (isBoot)
+		setBrokerTbTokenFromFile();
 	sdk_wifi_set_opmode(STATION_MODE);
-
-	TimerHandle_t plcInitTimer = xTimerCreate("PLC init", pdMS_TO_TICKS(2000), pdFALSE, 0, initPlcTimerClbk);
-	xTimerStart(plcInitTimer, 0);
-
+	sdk_wifi_station_connect();
 	xTaskNotifyGive(xMqttTask);
+	printFileContent();
+	printf("Starting broker mode\n");
 }
 
-void startClientMode()
+static void startClientMode(bool isBoot)
 {
 	devType = CLIENT;
 
+	printFileContent();
+	if (isBoot)
+		setClientPlcPhyAddrOfBrokerAndTbTokenFromFile();
+
 	sdk_wifi_set_opmode(STATION_MODE);
 	sdk_wifi_station_disconnect();
-
-	TimerHandle_t plcInitTimer = xTimerCreate("PLC init", pdMS_TO_TICKS(2000), pdFALSE, 0, initPlcTimerClbk);
-	xTimerStart(plcInitTimer, 0);
 }
 
-static inline void setPlcPhyAddrFromDev()
+static inline void setPlcPhyAddrFromPLCChip()
 {
 	readPLCregisters(PHY_ADDR, (uint8_t *)plcPhyAddr, 8);
 }
@@ -257,13 +230,7 @@ static void initPlcTimerClbk(TimerHandle_t xTimer)
 {
 	printf("Initializing PLC.\n\r");
 	initPLCdevice(0);
-	xTimerDelete(xTimer, 0);
-}
-
-static void initBrokersPlcPhyAddrFromDev(TimerHandle_t xTimer)
-{
-	printf("Getting PLC Phy address from CY8CPLC10\n\r");
-	setPlcPhyAddrFromDev();
+	setPlcPhyAddrFromPLCChip();
 	xTimerDelete(xTimer, 0);
 }
 
@@ -321,3 +288,14 @@ static void connectToStation(char *SSID, char *password, int SSIDLen, int passwo
 	sdk_wifi_station_connect();
 }
 
+static inline void fillJsonConnectionSuccessStringWithPlcPhyAddr()
+{
+	/* Offset is set at 18 position from end of string because it should omit
+	 * one '}', one '"' and sixteen '-' characters.
+	 */
+	char plcPhyAddrStr[20];
+	snprintf((char *)plcPhyAddrStr, sizeof(plcPhyAddrStr), "%02X%02X%02X%02X%02X%02X%02X%02X",
+			 PLCPHY2STR(plcPhyAddr));
+	memcpy((uint8_t *)(wifiConnectionSuccessJson + wifiConnectionSuccessJsonLen - 18),
+		   plcPhyAddrStr, 16);
+}

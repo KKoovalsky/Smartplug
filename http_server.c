@@ -30,7 +30,7 @@ const uint8_t wifiWrongPasswordJson[] = "{\"data\":\"enableButtons\",\"msg\":\"W
 const uint8_t wifiNoAPFoundJson[] = "{\"data\":\"enableButtons\",\"msg\":\"No AP found.\"}";
 
 uint8_t wifiConnectionSuccessJson[] =
-	"{\"data\":\"enableButtons\",\"msg\":\"Connection successful. Closing access point. \
+	"{\"data\":\"stopWs\",\"msg\":\"Connection successful. Closing access point. \
 Save the PLC Phy Address: ----------------\"}";
 
 uint8_t wifiConnectionSuccessJsonLen = sizeof(wifiConnectionSuccessJson) - 1;
@@ -52,7 +52,7 @@ const uint8_t wifiJsonStringsLen[] = {
 	sizeof(wifiConnectionFailedJson) - 1};
 
 const uint8_t plcJsonRegisSuccessStr[] =
-	"{\"data\":\"enableButtons\",\"msg\":\"Succesfully registered client. Closing access point.\"}";
+	"{\"data\":\"stopWs\",\"msg\":\"Succesfully registered client. Closing access point.\"}";
 const uint8_t plcJsonRegisUnsuccessStr[] =
 	"{\"data\":\"enableButtons\",\"msg\":\"Client registration error. Please, check PLC Phy address.\"}";
 const uint8_t plcJsonTooShortPhyAddrStr[] =
@@ -172,10 +172,10 @@ void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
 
 		printf("%s %s %s\n", configData.SSID, configData.password, configData.tbToken);
 
-		configData.mode = SPIFFS_WRITE_WIFI_CONF;
+		configData.mode = WRITE_WIFI_CONF;
 
 		// Let other task handle this data (this handler should be left asap - it is said by http server documentation)
-		xQueueSend(xConnectWhileConfigQueue, &configData, 0);
+		xQueueSend(xInitializerQueue, &configData, 0);
 	}
 	else if (!strncmp(configStr, "phyaddr", configStrLen))
 	{
@@ -198,8 +198,8 @@ void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
 		configData.PLCPhyAddrLen = (uint8_t)phyAddrLen;
 		configData.tbTokenLen = (uint8_t)tbTokenLen;
 
-		configData.mode = SPIFFS_WRITE_PLC_CONF;
-		xQueueSend(xConnectWhileConfigQueue, &configData, 0);
+		configData.mode = WRITE_PLC_CONF;
+		xQueueSend(xInitializerQueue, &configData, 0);
 	}
 	else
 	{

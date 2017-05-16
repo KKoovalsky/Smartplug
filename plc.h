@@ -151,7 +151,7 @@
 #define MAX_I2C_ATTEMPTS 5
 
 #define MAX_REMOTE_CMD_RETRIES 5
-#define MAX_NACK_RCV 3
+#define MAX_NACK_RCV 2
 
 #include <stdint.h>
 #include "FreeRTOS.h"
