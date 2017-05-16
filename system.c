@@ -140,6 +140,7 @@ void initializerTask(void *pvParameters)
 
 			uint8_t destPhyAddr[8];
 			parsePLCPhyAddress((char *)configData.PLCPhyAddr, destPhyAddr);
+			printf("Connecting to PLC broker: %X%X%X%X%X%X%X%X\n\r", PLCPHY2STR(destPhyAddr));
 
 			if (registerClient((char *)destPhyAddr, configData.tbToken) >= 0)
 			{
@@ -163,7 +164,7 @@ void initializerTask(void *pvParameters)
 			}
 			else
 			{
-				printf("Client registration unsuccessful.");
+				printf("Client registration unsuccessful.\n\r");
 				vPortFree(configData.PLCPhyAddr);
 				vPortFree(configData.tbToken);
 				sendWsResponse(plcJsonRegisUnsuccessStr, plcJsonRegisUnsuccessStrLen);
@@ -179,9 +180,9 @@ static uint8_t getUint8FromHexChar(char c)
 	if (c >= '0' && c <= '9')
 		c -= '0';
 	else if (c >= 'A' && c <= 'Z')
-		c -= 'A';
+		c -= ('A' - 10);
 	else if (c >= 'a' && c <= 'z')
-		c -= 'a';
+		c -= ('a' - 10);
 	else
 		c = 0;
 
@@ -192,7 +193,7 @@ void parsePLCPhyAddress(char *asciiSrc, uint8_t *binDest)
 {
 	for (int i = 0; i < 8; i++)
 	{
-		binDest[i] = (uint8_t)(getUint8FromHexChar(*asciiSrc) << 4) | (getUint8FromHexChar(*(asciiSrc + 1)));
+		binDest[i] = (uint8_t)(getUint8FromHexChar(*asciiSrc) << 4) + (getUint8FromHexChar(*(asciiSrc + 1)));
 		asciiSrc += 2;
 	}
 }

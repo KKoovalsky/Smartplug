@@ -108,8 +108,7 @@ void setPLCtxAddrType(uint8_t txSAtype, uint8_t txDAtype)
 
 void setPLCtxDA(uint8_t txDAtype, uint8_t *txDA)
 {
-	//  W zależności od typu adresu DA zapisujemy odpowiednią
-	//  ilość bajtów adresu DA
+	// Logical and group addresses are one byte and physical address is eight byte.
 	switch (txDAtype)
 	{
 	case TX_DA_TYPE_LOGICAL:
@@ -362,6 +361,8 @@ void plcTaskSend(void *pvParameters)
 				if (txRec->len)
 					fillPLCTxData(txRec->data, txRec->len);
 
+				setPLCtxDA(TX_DA_TYPE_PHYSICAL, txRec->phyAddr);
+
 				writePLCregister(TX_COMMAND_ID_REG, txRec->command);
 
 				writePLCregister(TX_MESSAGE_LENGTH_REG, txRec->len | SEND_MESSAGE);
@@ -422,6 +423,8 @@ void registerNewClientTask(void *pvParameters)
 
 		plcTxBufHead = (plcTxBufHead + 1) & PLC_TX_BUF_MASK;
 		xTaskNotifyGive(xPLCTaskSend);
+
+		printf("Wrong packet name\n\r");
 	}
 	else
 	{

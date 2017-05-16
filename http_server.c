@@ -458,6 +458,5 @@ void httpd_task(void *pvParameters)
 
 void sendWsResponse(const uint8_t *msg, int len)
 {
-	err_t result = websocket_write((struct tcp_pcb *)wsPCB, msg, len, WS_TEXT_MODE);
-	printf("Sending WS response result: %d\n\r of data %s\n\r with len %d\n\r", result, msg, len);
+	websocket_write((struct tcp_pcb *)wsPCB, msg, len, WS_TEXT_MODE);
 }
