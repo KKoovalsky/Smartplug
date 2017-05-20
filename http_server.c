@@ -175,7 +175,7 @@ void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
 		configData.mode = WRITE_WIFI_CONF;
 
 		// Let other task handle this data (this handler should be left asap - it is said by http server documentation)
-		xQueueSend(xInitializerQueue, &configData, 0);
+		xQueueSend(xConfiguratorQueue, &configData, 0);
 	}
 	else if (!strncmp(configStr, "phyaddr", configStrLen))
 	{
@@ -199,7 +199,7 @@ void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
 		configData.tbTokenLen = (uint8_t)tbTokenLen;
 
 		configData.mode = WRITE_PLC_CONF;
-		xQueueSend(xInitializerQueue, &configData, 0);
+		xQueueSend(xConfiguratorQueue, &configData, 0);
 	}
 	else
 	{

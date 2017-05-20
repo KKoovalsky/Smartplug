@@ -222,4 +222,6 @@ void registerNewClientTask(void *pvParameters);
 
 int registerClient(char *brokerPhyAddr, char *tbToken);
 
+void initPlcWithDelay();
+
 #endif

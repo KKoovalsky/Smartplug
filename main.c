@@ -13,6 +13,7 @@
 #include "spiffs_local.h"
 #include "system.h"
 #include "cloud.h"
+#include "sntp_sync.h"
 
 #define SCL_PIN 5
 #define SDA_PIN 4
@@ -43,14 +44,16 @@ void user_init(void)
 
     sdk_wifi_station_set_auto_connect(0);
     
-    xInitializerQueue = xQueueCreate(1, sizeof(PermConfData_s));
+    xConfiguratorQueue = xQueueCreate(1, sizeof(PermConfData_s));
 
 	xPLCSendSemaphore = xSemaphoreCreateMutex();
+
+	initFileSystem();
+	initDeviceByMode();
 
     xTaskCreate(blinkTask, "Blink", 256, NULL, 2, NULL);
     xTaskCreate(plcTaskRcv, "PLC Rcv", 256, NULL, 3, &xPLCTaskRcv);
 	xTaskCreate(plcTaskSend, "PLC Send", 256, NULL, 3, &xPLCTaskSend);
-    xTaskCreate(initializerTask, "configConnect", 512, NULL, 3, &xInitializerTask);
     xTaskCreate(mqttTask, "MQTT", 1024, NULL, 2, &xMqttTask);
-
+	//xTaskCreate(sntpTestTask, "SNTP test", 1024, NULL, 2, NULL);
 }

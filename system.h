@@ -26,13 +26,15 @@ typedef struct PermConfData
     InitMode_t mode;
 } PermConfData_s;
 
-extern QueueHandle_t xInitializerQueue;
-extern TaskHandle_t xInitializerTask;
+extern QueueHandle_t xConfiguratorQueue;
+extern TaskHandle_t xConfiguratorTask;
 
 extern volatile int devType;
 extern volatile char myTbToken[20];
 
-void initializerTask(void *pvParameters);
+void configuratorTask(void *pvParameters);
+
+void initDeviceByMode();
 
 void parsePLCPhyAddress(char *asciiSrc, uint8_t *binDest);
 

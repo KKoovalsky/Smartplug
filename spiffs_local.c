@@ -84,6 +84,7 @@ int getDeviceModeFromFile(char *buf)
 	if (fd < 0)
 	{
 		printf("Error opening configuration file.\n");
+		*buf = '\0';
 		return -1;
 	}
 

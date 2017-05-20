@@ -15,9 +15,10 @@
 #include "plc.h"
 #include "spiffs.h"
 #include "esp_spiffs.h"
+#include "sntp_sync.h"
 
-QueueHandle_t xInitializerQueue;
-TaskHandle_t xInitializerTask;
+QueueHandle_t xConfiguratorQueue;
+TaskHandle_t xConfiguratorTask;
 
 volatile int devType;
 volatile char myTbToken[20];
@@ -28,49 +29,36 @@ volatile char myTbToken[20];
 static void startBrokerMode(bool isBoot);
 static void startClientMode(bool isBoot);
 
-static void initPlcTimerClbk(TimerHandle_t xTimer);
-
 static inline void setMyTbToken(char *tbToken);
-static inline void setPlcPhyAddrFromPLCChip();
-static void setAP_STA();
+static void setStationAPMode();
 static void connectToStation(char *SSID, char *password, int SSIDLen, int passwordLen);
 static inline void fillJsonConnectionSuccessStringWithPlcPhyAddr();
 
-void initializerTask(void *pvParameters)
+void initDeviceByMode()
 {
-	if (initFileSystem() < 0)
-		vTaskDelete(NULL);
-
 	char buffer[8];
-	if (getDeviceModeFromFile(buffer) < 0)
-		vTaskDelete(NULL);
-
-	// PLC Chip initialization after two seconds to wait for device startup.
-	TimerHandle_t plcInitTimer = xTimerCreate("PLC init", pdMS_TO_TICKS(2000), pdFALSE, 0, initPlcTimerClbk);
-	xTimerStart(plcInitTimer, 0);
+	getDeviceModeFromFile(buffer);
 
 	// Check if device is already configured as client or broker, otherwise start HTTP server to get configuration.
 	if (!strncmp(buffer, clientStr, sizeof(clientStr) - 1))
-	{
 		startClientMode(true);
-		vTaskDelete(NULL);
-	}
 	else if (!strncmp(buffer, brokerStr, sizeof(brokerStr) - 1))
-	{
 		startBrokerMode(true);
-		vTaskDelete(NULL);
-	}
 	else // If its first run of this device, then start HTTP server to get configuration
 	{
 		printf("First run of the device\n");
-		setAP_STA();
+		setStationAPMode();
 		xTaskCreate(httpd_task, "HTTP Daemon", 128, NULL, 2, &xHTTPServerTask);
+		xTaskCreate(configuratorTask, "configConnect", 1536, NULL, 3, &xConfiguratorTask);
 	}
+}
 
+void configuratorTask(void *pvParameters)
+{
 	for (;;)
 	{
 		PermConfData_s configData;
-		xQueueReceive(xInitializerQueue, &configData, portMAX_DELAY);
+		xQueueReceive(xConfiguratorQueue, &configData, portMAX_DELAY);
 
 		if (configData.mode == WRITE_WIFI_CONF)
 		{
@@ -98,7 +86,7 @@ void initializerTask(void *pvParameters)
 				fillJsonConnectionSuccessStringWithPlcPhyAddr();
 
 				// Subscribe to get notification when ACK via websocket will be sent.
-				xWSGetAckTaskHandle = xInitializerTask;
+				xWSGetAckTaskHandle = xConfiguratorTask;
 
 				// Send JSON data that connection was successful
 				sendWsResponse(wifiConnectionSuccessJson, wifiConnectionSuccessJsonLen);
@@ -148,7 +136,7 @@ void initializerTask(void *pvParameters)
 				memcpy((char *)plcPhyAddr, destPhyAddr, 8);
 				setMyTbToken(configData.tbToken);
 
-				xWSGetAckTaskHandle = xInitializerTask;
+				xWSGetAckTaskHandle = xConfiguratorTask;
 
 				sendWsResponse(plcJsonRegisSuccessStr, plcJsonRegisSuccessStrLen);
 
@@ -222,25 +210,12 @@ static void startClientMode(bool isBoot)
 	sdk_wifi_station_disconnect();
 }
 
-static inline void setPlcPhyAddrFromPLCChip()
-{
-	readPLCregisters(PHY_ADDR, (uint8_t *)plcPhyAddr, 8);
-}
-
-static void initPlcTimerClbk(TimerHandle_t xTimer)
-{
-	printf("Initializing PLC.\n\r");
-	initPLCdevice(0);
-	setPlcPhyAddrFromPLCChip();
-	xTimerDelete(xTimer, 0);
-}
-
 static inline void setMyTbToken(char *tbToken)
 {
 	memcpy((char *)myTbToken, tbToken, 20);
 }
 
-static void setAP_STA()
+static void setStationAPMode()
 {
 	sdk_wifi_set_opmode(STATIONAP_MODE);
 	struct ip_info ap_ip;

@@ -9,6 +9,7 @@
 #include "esp/uart.h"
 #include "system.h"
 #include "client_list.h"
+#include "timers.h"
 
 #define DEBUG_PLC
 #define HOST_INT_PIN 13
@@ -23,7 +24,29 @@ int plcTxBufHead, plcTxBufTail;
 
 volatile uint8_t plcPhyAddr[8];
 
+static void initPlcTimerClbk(TimerHandle_t xTimer);
 static void hostIntPinHandler(uint8_t pin);
+static inline void setPlcPhyAddrFromPLCChip();
+
+void initPlcWithDelay()
+{
+	// PLC Chip initialization after two seconds to wait for device startup.
+	TimerHandle_t plcInitTimer = xTimerCreate("PLC init", pdMS_TO_TICKS(2000), pdFALSE, 0, initPlcTimerClbk);
+	xTimerStart(plcInitTimer, 0);
+}
+
+static void initPlcTimerClbk(TimerHandle_t xTimer)
+{
+	printf("Initializing PLC.\n\r");
+	initPLCdevice(0);
+	setPlcPhyAddrFromPLCChip();
+	xTimerDelete(xTimer, 0);
+}
+
+static inline void setPlcPhyAddrFromPLCChip()
+{
+	readPLCregisters(PHY_ADDR, (uint8_t *)plcPhyAddr, 8);
+}
 
 uint8_t readPLCregister(uint8_t reg)
 {
@@ -206,8 +229,7 @@ void initPLCdevice(uint8_t nodeLA)
 	//	Konfiguracja parametrów transmisji
 	writePLCregister(MODEM_CONFIG_REG, MODEM_BPS_2400 | MODEM_FSK_BAND_DEV_3KHZ);
 	//	Uruchomienie przerwań dla wybranych zdarzeń (aktywny poziom niski na wyprowadzeniu HOST_INT)
-	writePLCregister(INTERRUPT_ENABLE_REG, INT_POLARITY_LOW | INT_UNABLE_TO_TX |
-											   INT_TX_NO_ACK | INT_TX_NO_RESP | INT_RX_DATA_AVAILABLE | INT_TX_DATA_SENT);
+	writePLCregister(INTERRUPT_ENABLE_REG, INT_POLARITY_LOW | INT_UNABLE_TO_TX | INT_TX_NO_ACK | INT_TX_NO_RESP | INT_RX_DATA_AVAILABLE | INT_TX_DATA_SENT);
 	//	Ustawienie trybu potwierdzania pakietów danych oraz liczby prób
 	//	transmisji = 5 (domyślne logiczne typy adresów SA i DA)
 	writePLCregister(TX_CONFIG_REG, TX_SERVICE_ACKNOWLEDGED | 0x05);
@@ -281,8 +303,8 @@ void plcTaskRcv(void *pvParameters)
 			case CUSTOM_CMD_REGISTRATION_FAILED:
 				result = -2;
 			case CUSTOM_CMD_REGISTRATION_SUCCESS:
-				if (xInitializerTask)
-					xTaskNotify(xInitializerTask, result, eSetValueWithoutOverwrite);
+				if (xConfiguratorTask)
+					xTaskNotify(xConfiguratorTask, result, eSetValueWithoutOverwrite);
 				break;
 			}
 			break;
@@ -342,8 +364,8 @@ void plcTaskRcv(void *pvParameters)
 
 void plcTaskSend(void *pvParameters)
 {
+	initPlcWithDelay();
 	xSemaphoreGive(xPLCSendSemaphore);
-
 	for (;;)
 	{
 		// Task notification receiving implemented to speed up sending of data.
@@ -378,7 +400,7 @@ int registerClient(char *brokerPhyAddr, char *tbToken)
 	plcTxRecord_s *txRec = &plcTxBuf[plcTxBufHead];
 	txRec->len = 20;
 	txRec->command = CUSTOM_CMD_REGISTER_NEW_DEV;
-	txRec->taskToNotify = xInitializerTask;
+	txRec->taskToNotify = xConfiguratorTask;
 
 	memcpy(txRec->phyAddr, brokerPhyAddr, 8);
 	memcpy(txRec->data, tbToken, 20);
