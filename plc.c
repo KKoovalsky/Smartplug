@@ -4,12 +4,14 @@
 #include <stdint.h>
 #include <string.h>
 #include "i2c.h"
-#include "espressif/esp_common.h"
 #include "esp8266.h"
+#include "espressif/esp_common.h"
+#include "espressif/esp_sta.h"
 #include "esp/uart.h"
 #include "system.h"
 #include "client_list.h"
 #include "timers.h"
+#include "sntp_sync.h"
 
 #define DEBUG_PLC
 #define HOST_INT_PIN 13
@@ -23,10 +25,14 @@ plcTxRecord_s plcTxBuf[PLC_TX_BUF_SIZE];
 int plcTxBufHead, plcTxBufTail;
 
 volatile uint8_t plcPhyAddr[8];
+volatile uint8_t *newWifiSsid = NULL, *newWifiPassword = NULL;
 
+static inline uint8_t readPLCRxPacketLength();
 static void initPlcTimerClbk(TimerHandle_t xTimer);
 static void hostIntPinHandler(uint8_t pin);
 static inline void setPlcPhyAddrFromPLCChip();
+static inline void handleReceivedDataBasingOnCommandReceived();
+static inline void clearWifiCredsAfterTimeoutIfDataNotArrived();
 
 void initPlcWithDelay()
 {
@@ -185,6 +191,25 @@ void getPLCrxSA(uint8_t *rxSA)
 	readPLCregisters(RX_SA_REG, rxSA, 8);
 }
 
+static inline uint8_t readPLCRxPacketLength()
+{
+	return readPLCregister(RX_MESSAGE_INFO_REG) & 0x1F;
+}
+
+// param[in] rxDataLength
+static void readPLCRxPayload(uint8_t *rxData, uint8_t rxDataLength)
+{
+	register uint8_t infoRegister;
+	readPLCregisters(RX_DATA_REG, rxData, rxDataLength);
+	//	Aby skasować flagi STATUS_VALUE_CHANGE, STATUS_RX_PACKET_DROPPED
+	//	i STATUS_RX_DATA_AVAIBLE w rejestrze INTERRUPT_STATUS_REG musimy
+	//	wyzerować flagę NEW_PACKET_RECEIVED w rejestrze RX_MESSAGE_INFO_REG
+	//	(datasheet)
+	infoRegister = readPLCregister(RX_MESSAGE_INFO_REG);
+	writePLCregister(RX_MESSAGE_INFO_REG, infoRegister & ~NEW_PACKET_RECEIVED);
+}
+
+// param[out] rxDataLength
 void readPLCrxPacket(uint8_t *rxCommand, uint8_t *rxData, uint8_t *rxDataLength)
 {
 	register uint8_t infoRegister;
@@ -291,34 +316,18 @@ void plcTaskRcv(void *pvParameters)
 		{
 		case STATUS_RX_DATA_AVAILABLE:
 		{
-			int result = 0;
-			unsigned int cmdReg = readPLCregister(RX_COMMAND_ID_REG);
-			printf("PLC: New RX data available.\n\r");
-			switch (cmdReg)
-			{
-			case CUSTOM_CMD_REGISTER_NEW_DEV:
-				if (devType == BROKER)
-					xTaskCreate(registerNewClientTask, "Regis", 256, NULL, 4, &xTaskNewClientRegis);
-				break;
-			case CUSTOM_CMD_REGISTRATION_FAILED:
-				result = -2;
-			case CUSTOM_CMD_REGISTRATION_SUCCESS:
-				if (xConfiguratorTask)
-					xTaskNotify(xConfiguratorTask, result, eSetValueWithoutOverwrite);
-				break;
-			}
+			handleReceivedDataBasingOnCommandReceived();
 			break;
 		}
 		case STATUS_TX_NO_ACK:
 		{
 			static int nackCnt = MAX_NACK_RCV;
 			nackCnt--;
-			printf("PLC: No ACK received.\n\r");
 			if (!nackCnt)
 			{
 				plcTxRecord_s *txRec = &plcTxBuf[plcTxBufTail];
 				if (txRec->taskToNotify)
-					xTaskNotify(txRec->taskToNotify, -1, eSetValueWithoutOverwrite);
+					xTaskNotify(txRec->taskToNotify, PLC_ERR_NO_ACK, eSetValueWithoutOverwrite);
 
 				nackCnt = MAX_NACK_RCV;
 				plcTxBufTail = (plcTxBufTail + 1) & PLC_TX_BUF_MASK;
@@ -330,12 +339,11 @@ void plcTaskRcv(void *pvParameters)
 		{
 			static int noRespCnt = MAX_REMOTE_CMD_RETRIES;
 			noRespCnt--;
-			printf("PLC: No response received.\n\r");
 			if (!noRespCnt)
 			{
 				plcTxRecord_s *txRec = &plcTxBuf[plcTxBufTail];
 				if (txRec->taskToNotify)
-					xTaskNotify(txRec->taskToNotify, -3, eSetValueWithoutOverwrite);
+					xTaskNotify(txRec->taskToNotify, PLC_ERR_NO_RESP, eSetValueWithoutOverwrite);
 
 				noRespCnt = MAX_REMOTE_CMD_RETRIES;
 				plcTxBufTail = (plcTxBufTail + 1) & PLC_TX_BUF_MASK;
@@ -359,6 +367,74 @@ void plcTaskRcv(void *pvParameters)
 			printf("Wrong PLC Interrupt register content: %d\n\r", intRegContent);
 			break;
 		}
+	}
+}
+
+static inline void handleReceivedDataBasingOnCommandReceived()
+{
+	static int len = 0;
+	volatile uint8_t **newWifiCred = &newWifiSsid;
+	plc_err_e result = PLC_ERR_OK;
+	unsigned int cmdReg = readPLCregister(RX_COMMAND_ID_REG);
+	printf("PLC: New RX data available.\n\r");
+	switch (cmdReg)
+	{
+	case CUSTOM_CMD_REGISTER_NEW_DEV:
+		if (devType == BROKER)
+			xTaskCreate(registerNewClientTask, "Regis", 256, NULL, 4, &xTaskNewClientRegis);
+		break;
+	case CUSTOM_CMD_REGISTRATION_FAILED:
+		result = PLC_ERR_REGISTRATION_FAILED;
+	case CUSTOM_CMD_REGISTRATION_SUCCESS:
+		if (xConfiguratorTask)
+			xTaskNotify(xConfiguratorTask, result, eSetValueWithoutOverwrite);
+		break;
+	case CUSTOM_CMD_NEW_WIFI_PASSWORD:
+		newWifiCred = &newWifiPassword;
+	case CUSTOM_CMD_NEW_WIFI_SSID:
+		if (devType == CLIENT)
+		{
+			if (*newWifiCred != NULL)
+			{
+				vPortFree((void *)*newWifiCred);
+				*newWifiCred = NULL;
+			}
+
+			uint8_t newCredLen = readPLCRxPacketLength();
+			*newWifiCred = (uint8_t *)pvPortMalloc(newCredLen + 1);
+			readPLCRxPayload((uint8_t *)*newWifiCred, newCredLen);
+
+			volatile uint8_t **secWifiCred = NULL;
+			uint8_t firstLen, secLen;
+			if (newWifiCred == &newWifiSsid)
+			{
+				secWifiCred = &newWifiPassword;
+				firstLen = newCredLen;
+				secLen = len;
+			}
+			else
+			{
+				secWifiCred = &newWifiSsid;
+				firstLen = len;
+				secLen = newCredLen;
+			}
+			// Wifi password or Ssid already arrived so we have all needed data to change Wifi network.
+			if (*secWifiCred)
+			{
+				struct sdk_station_config config;
+				fillStationConfig(&config, (char *)newWifiSsid, (char *)newWifiPassword, firstLen, secLen);
+				sdk_wifi_station_set_config(&config);
+				vPortFree((void *)newWifiSsid);
+				vPortFree((void *)newWifiPassword);
+				newWifiSsid = newWifiPassword = NULL;
+			}
+			else
+			{
+				len = newCredLen;
+				clearWifiCredsAfterTimeoutIfDataNotArrived();
+			}
+		}
+		break;
 	}
 }
 
@@ -395,7 +471,7 @@ void plcTaskSend(void *pvParameters)
 
 // TODO: byte type signedness standarization
 // TODO: split into different files client side and broker side functions.
-int registerClient(char *brokerPhyAddr, char *tbToken)
+plc_err_e registerClient(char *brokerPhyAddr, char *tbToken)
 {
 	plcTxRecord_s *txRec = &plcTxBuf[plcTxBufHead];
 	txRec->len = 20;
@@ -410,17 +486,17 @@ int registerClient(char *brokerPhyAddr, char *tbToken)
 	xTaskNotifyGive(xPLCTaskSend);
 
 	// First notification received with information if TX data acknowledged.
-	uint32_t result;
-	if (xTaskNotifyWait(0, 0xFFFFFFFF, &result, pdMS_TO_TICKS(20000)) != pdTRUE)
+	plc_err_e result;
+	if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *) &result, pdMS_TO_TICKS(20000)) != pdTRUE)
 	{
-		result = -1;
+		result = PLC_ERR_TIMEOUT;
 		txRec->taskToNotify = NULL;
 	}
 
-	if (result == 0)
+	if (result == PLC_ERR_OK)
 	{
-		if (xTaskNotifyWait(0, 0xFFFFFFFF, &result, pdMS_TO_TICKS(20000)) != pdTRUE)
-			result = -1;
+		if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *) &result, pdMS_TO_TICKS(20000)) != pdTRUE)
+			result = PLC_ERR_TIMEOUT;
 	}
 
 	return result;
@@ -458,8 +534,8 @@ void registerNewClientTask(void *pvParameters)
 		plcTxBufHead = (plcTxBufHead + 1) & PLC_TX_BUF_MASK;
 		xTaskNotifyGive(xPLCTaskSend);
 
-		uint32_t result;
-		if (xTaskNotifyWait(0, 0xFFFFFFFF, &result, pdMS_TO_TICKS(5000)) != pdTRUE)
+		plc_err_e result;
+		if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *) &result, pdMS_TO_TICKS(5000)) != pdTRUE)
 		{
 			result = -1;
 			txRec->taskToNotify = NULL;
@@ -468,26 +544,57 @@ void registerNewClientTask(void *pvParameters)
 		if (result < 0)
 		{
 			vPortFree(newClient);
-			// TODO: Here can be checked what happened exactly (switch(result))
-			switch (result)
-			{
-			case -1:
-				printf("ERROR: Registration confirmation not acknowledged. Registration aborted.\n\r");
-				break;
-			case -3:
-				printf("ERROR: Response not received. Registration aborted.\n\r");
-				break;
-			default:
-				printf("ERROR: Undefined: %d\n\r", result);
-			}
-			printf("ERROR: Registration confirmation not acknowledged. Not registering.\n\r");
+			printf("Error occured while registering: %d\n\r", result);
 		}
 		else
 		{
 			printf("Registration successful\n\r");
 			addClient(newClient);
+
+			struct sdk_station_config config;
+			sdk_wifi_station_get_config(&config);
+			int ssidLen = strlen((char *) config.ssid);
+			int passwordLen = strlen((char *) config.password);
+
+			// Send Wifi ssid over PLC
+			txRec = &plcTxBuf[plcTxBufHead];
+			txRec->len = ssidLen;
+			txRec->command = CUSTOM_CMD_NEW_WIFI_SSID;
+			memcpy(txRec->data, config.ssid, ssidLen);
+			plcTxBufHead = (plcTxBufHead + 1) & PLC_TX_BUF_MASK;
+
+			// Send Wifi password over PLC - TODO - not safe - add application layer encryption
+			txRec = &plcTxBuf[plcTxBufHead];
+			txRec->len = passwordLen;
+			txRec->command = CUSTOM_CMD_NEW_WIFI_PASSWORD;
+			memcpy(txRec->data, config.password, passwordLen);
+			plcTxBufHead = (plcTxBufHead + 1) & PLC_TX_BUF_MASK;
 		}
 	}
 
 	vTaskDelete(NULL);
+}
+
+static void wifiCredsTimeoutHandler(TimerHandle_t xTimer)
+{
+	if (newWifiPassword)
+	{
+		vPortFree((void *)newWifiPassword);
+		newWifiPassword = NULL;
+	}
+	if (newWifiSsid)
+	{
+		vPortFree((void *)newWifiSsid);
+		newWifiSsid = NULL;
+	}
+
+	xTimerDelete(xTimer, 0);
+}
+
+static inline void clearWifiCredsAfterTimeoutIfDataNotArrived()
+{
+
+	TimerHandle_t xWifiCredsTimeoutTimer = xTimerCreate("WifiCreds", pdMS_TO_TICKS(15 * 1000),
+														pdFALSE, (void *)1, wifiCredsTimeoutHandler);
+	xTimerStart(xWifiCredsTimeoutTimer, 0);
 }

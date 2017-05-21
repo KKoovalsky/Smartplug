@@ -77,6 +77,45 @@ void saveClientConfigDataToFile(PermConfData_s *configData)
 	close(fd);
 }
 
+void saveClientWifiCredentialsToFile(char *newWifiSsid, char *newWifiPassword, 
+	uint8_t newWifiSsidLen, uint8_t newWifiPasswordLen)
+{
+	int fd = open("smartplug.conf", O_RDONLY);
+	if (fd < 0)
+	{
+		printf("Error opening configuration file\n");
+		return;
+	}
+
+	char buffer[32 + 64 + 20 + 8];
+	lseek(fd, 0, SEEK_SET);
+	read(fd, buffer, sizeof(buffer));
+	close(fd);
+
+	char *p = strchr(buffer, '\n');
+	if(p != NULL)
+		p = strchr(p + 1, '\n');
+
+	int wifiCredsStartIndex = 0;
+	if(p != NULL)
+		wifiCredsStartIndex = (p - buffer) + 20 + 1; // 20 chars for Thingsboard token and one for newline
+
+	fd = open("smartplug.conf", O_WRONLY);
+	if (fd < 0)
+	{
+		printf("Error opening configuration file\n");
+		return;
+	}
+
+	lseek(fd, wifiCredsStartIndex, SEEK_SET);
+	write(fd, "\n", 1);
+	write(fd, newWifiSsid, newWifiSsidLen);
+	write(fd, "\n", 1);
+	write(fd, newWifiPassword, newWifiPasswordLen);
+	write(fd, "\n", 1);
+	close(fd);
+}
+
 int getDeviceModeFromFile(char *buf)
 {
 	// Read file which contains mode of operation.

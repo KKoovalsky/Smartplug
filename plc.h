@@ -138,9 +138,20 @@
 #define STATUS_RX_DATA_AVAILABLE (1 << 1)
 #define STATUS_TX_DATA_SENT (1 << 0)
 
-#define CUSTOM_CMD_REGISTER_NEW_DEV 0x30
-#define CUSTOM_CMD_REGISTRATION_FAILED 0x31
-#define CUSTOM_CMD_REGISTRATION_SUCCESS 0x32
+#define CUSTOM_CMD_REGISTER_NEW_DEV 		0x30
+#define CUSTOM_CMD_REGISTRATION_FAILED 		0x31
+#define CUSTOM_CMD_REGISTRATION_SUCCESS 	0x32
+#define CUSTOM_CMD_NEW_WIFI_SSID			0x33
+#define CUSTOM_CMD_NEW_WIFI_PASSWORD		0x34
+
+typedef enum 
+{
+	PLC_ERR_OK = 0,
+	PLC_ERR_TIMEOUT = -1,
+	PLC_ERR_NO_ACK = -2,
+	PLC_ERR_NO_RESP = -3,
+	PLC_ERR_REGISTRATION_FAILED = -4,
+} plc_err_e;
 
 #define PHY_ADDR 0x6A
 
@@ -220,7 +231,7 @@ void plcTaskRcv(void *pvParameters);
 void plcTaskSend(void *pvParameters);
 void registerNewClientTask(void *pvParameters);
 
-int registerClient(char *brokerPhyAddr, char *tbToken);
+plc_err_e registerClient(char *brokerPhyAddr, char *tbToken);
 
 void initPlcWithDelay();
 

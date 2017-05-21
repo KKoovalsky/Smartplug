@@ -14,6 +14,8 @@ int initFileSystem();
 
 void saveBrokerConfigDataToFile(PermConfData_s *);
 void saveClientConfigDataToFile(PermConfData_s *);
+void saveClientWifiCredentialsToFile(char *newWifiSsid, char *newWifiPassword, 
+	uint8_t newSsidLen, uint8_t newWifiPasswordLen);
 
 int getDeviceModeFromFile(char *);
 

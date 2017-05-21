@@ -15,7 +15,6 @@
 #include "plc.h"
 #include "spiffs.h"
 #include "esp_spiffs.h"
-#include "sntp_sync.h"
 
 QueueHandle_t xConfiguratorQueue;
 TaskHandle_t xConfiguratorTask;
@@ -49,7 +48,7 @@ void initDeviceByMode()
 		printf("First run of the device\n");
 		setStationAPMode();
 		xTaskCreate(httpd_task, "HTTP Daemon", 128, NULL, 2, &xHTTPServerTask);
-		xTaskCreate(configuratorTask, "configConnect", 1536, NULL, 3, &xConfiguratorTask);
+		xTaskCreate(configuratorTask, "configConnect", 1536, NULL, 4, &xConfiguratorTask);
 	}
 }
 
@@ -253,12 +252,7 @@ static void setStationAPMode()
 static void connectToStation(char *SSID, char *password, int SSIDLen, int passwordLen)
 {
 	struct sdk_station_config config;
-
-	memcpy(config.ssid, SSID, SSIDLen);
-	memcpy(config.password, password, passwordLen);
-
-	config.ssid[SSIDLen] = '\0';
-	config.password[passwordLen] = '\0';
+	fillStationConfig(&config, SSID, password, SSIDLen, passwordLen); 
 
 	sdk_wifi_station_set_config(&config);
 	sdk_wifi_station_connect();
@@ -274,4 +268,14 @@ static inline void fillJsonConnectionSuccessStringWithPlcPhyAddr()
 			 PLCPHY2STR(plcPhyAddr));
 	memcpy((uint8_t *)(wifiConnectionSuccessJson + wifiConnectionSuccessJsonLen - 18),
 		   plcPhyAddrStr, 16);
+}
+
+void fillStationConfig(struct sdk_station_config *config, char *ssid, char *password, 
+	uint8_t ssidLen, uint8_t passwordLen)
+{
+	memcpy(config->ssid, ssid, ssidLen);
+	memcpy(config->password, password, passwordLen);
+
+	config->ssid[ssidLen] = '\0';
+	config->password[passwordLen] = '\0';
 }

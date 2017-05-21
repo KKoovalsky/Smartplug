@@ -9,6 +9,8 @@
 #define CLIENT 1
 #define BROKER 2
 
+#define MAX_WAITTIME_FOR_DISCONNECT_WHEN_CHANGING_STATION 20
+
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
@@ -26,6 +28,8 @@ typedef struct PermConfData
     InitMode_t mode;
 } PermConfData_s;
 
+struct sdk_station_config;
+
 extern QueueHandle_t xConfiguratorQueue;
 extern TaskHandle_t xConfiguratorTask;
 
@@ -37,5 +41,9 @@ void configuratorTask(void *pvParameters);
 void initDeviceByMode();
 
 void parsePLCPhyAddress(char *asciiSrc, uint8_t *binDest);
+
+void fillStationConfig(struct sdk_station_config *config, char *ssid, char *password, 
+	uint8_t ssidLen, uint8_t passwordLen);
+
 
 #endif
