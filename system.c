@@ -15,6 +15,7 @@
 #include "plc.h"
 #include "spiffs.h"
 #include "esp_spiffs.h"
+#include "sntp_sync.h"
 
 QueueHandle_t xConfiguratorQueue;
 TaskHandle_t xConfiguratorTask;
@@ -24,14 +25,16 @@ volatile char myTbToken[20];
 
 // TODO: Check if Thingsboard token is correct
 // TODO: Get rid of small mallocs.
+// TODO: Clean up function placement.
 
 static void startBrokerMode(bool isBoot);
 static void startClientMode(bool isBoot);
-
+static void brokerStartUpTask(void *pvParameters);
 static inline void setMyTbToken(char *tbToken);
 static void setStationAPMode();
 static void connectToStation(char *SSID, char *password, int SSIDLen, int passwordLen);
 static inline void fillJsonConnectionSuccessStringWithPlcPhyAddr();
+
 
 void initDeviceByMode()
 {
@@ -42,7 +45,10 @@ void initDeviceByMode()
 	if (!strncmp(buffer, clientStr, sizeof(clientStr) - 1))
 		startClientMode(true);
 	else if (!strncmp(buffer, brokerStr, sizeof(brokerStr) - 1))
+	{
 		startBrokerMode(true);
+		xTaskCreate(brokerStartUpTask, "StartUp", 512, NULL, 2, NULL);
+	}
 	else // If its first run of this device, then start HTTP server to get configuration
 	{
 		printf("First run of the device\n");
@@ -131,6 +137,7 @@ void configuratorTask(void *pvParameters)
 
 			if (registerClient((char *)destPhyAddr, configData.tbToken) >= 0)
 			{
+				devType = CLIENT;
 				printf("Client registration successful.\n\r");
 				memcpy((char *)plcPhyAddr, destPhyAddr, 8);
 				setMyTbToken(configData.tbToken);
@@ -160,6 +167,12 @@ void configuratorTask(void *pvParameters)
 		else
 			printf("Unknown spiffs mode\n");
 	}
+}
+
+void brokerStartUpTask(void *pvParameters)
+{
+	sdk_wifi_station_connect();
+	vTaskDelete(NULL);
 }
 
 static uint8_t getUint8FromHexChar(char c)
@@ -192,7 +205,8 @@ static void startBrokerMode(bool isBoot)
 		setBrokerTbTokenFromFile();
 	sdk_wifi_set_opmode(STATION_MODE);
 	sdk_wifi_station_connect();
-	xTaskNotifyGive(xMqttTask);
+	xTaskCreate(mqttTask, "MQTT", 1024, NULL, 2, &xMqttTask);
+	sntpInit();
 	printFileContent();
 	printf("Starting broker mode\n");
 }
@@ -252,7 +266,7 @@ static void setStationAPMode()
 static void connectToStation(char *SSID, char *password, int SSIDLen, int passwordLen)
 {
 	struct sdk_station_config config;
-	fillStationConfig(&config, SSID, password, SSIDLen, passwordLen); 
+	fillStationConfig(&config, SSID, password, SSIDLen, passwordLen);
 
 	sdk_wifi_station_set_config(&config);
 	sdk_wifi_station_connect();
@@ -270,8 +284,8 @@ static inline void fillJsonConnectionSuccessStringWithPlcPhyAddr()
 		   plcPhyAddrStr, 16);
 }
 
-void fillStationConfig(struct sdk_station_config *config, char *ssid, char *password, 
-	uint8_t ssidLen, uint8_t passwordLen)
+void fillStationConfig(struct sdk_station_config *config, char *ssid, char *password,
+					   uint8_t ssidLen, uint8_t passwordLen)
 {
 	memcpy(config->ssid, ssid, ssidLen);
 	memcpy(config->password, password, passwordLen);

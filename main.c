@@ -54,6 +54,17 @@ void user_init(void)
     xTaskCreate(blinkTask, "Blink", 256, NULL, 2, NULL);
     xTaskCreate(plcTaskRcv, "PLC Rcv", 256, NULL, 3, &xPLCTaskRcv);
 	xTaskCreate(plcTaskSend, "PLC Send", 256, NULL, 3, &xPLCTaskSend);
-    xTaskCreate(mqttTask, "MQTT", 1024, NULL, 2, &xMqttTask);
-	//xTaskCreate(sntpTestTask, "SNTP test", 1024, NULL, 2, NULL);
+
+#ifdef DEBUG_NOW
+	xTaskCreate(sntpTestTask, "SNTP test", 1024, NULL, 2, NULL);
+#define STATION_SSID "L50 Sporty"
+#define STATION_PASS "huehuehue"
+	struct sdk_station_config config = {
+        .ssid = STATION_SSID,
+        .password = STATION_PASS,
+    };
+	sdk_wifi_set_opmode(STATION_MODE);
+    sdk_wifi_station_set_config(&config);
+	devType = CLIENT;
+#endif
 }

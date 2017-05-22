@@ -129,6 +129,7 @@
                 wsWrite("ACK");
             } else if (content.data == "stopWs") {
                 cancelWsKeepAlive();
+                wsWrite("ACK");
             }
             setMsg(content.msg);
         }

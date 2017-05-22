@@ -405,25 +405,27 @@ static inline void handleReceivedDataBasingOnCommandReceived()
 			readPLCRxPayload((uint8_t *)*newWifiCred, newCredLen);
 
 			volatile uint8_t **secWifiCred = NULL;
-			uint8_t firstLen, secLen;
+			uint8_t ssidLen, passwordLen;
 			if (newWifiCred == &newWifiSsid)
 			{
 				secWifiCred = &newWifiPassword;
-				firstLen = newCredLen;
-				secLen = len;
+				ssidLen = newCredLen;
+				passwordLen = len;
 			}
 			else
 			{
 				secWifiCred = &newWifiSsid;
-				firstLen = len;
-				secLen = newCredLen;
+				ssidLen = len;
+				passwordLen = newCredLen;
 			}
 			// Wifi password or Ssid already arrived so we have all needed data to change Wifi network.
 			if (*secWifiCred)
 			{
 				struct sdk_station_config config;
-				fillStationConfig(&config, (char *)newWifiSsid, (char *)newWifiPassword, firstLen, secLen);
+				fillStationConfig(&config, (char *)newWifiSsid, (char *)newWifiPassword, ssidLen, passwordLen);
 				sdk_wifi_station_set_config(&config);
+				sdk_wifi_station_connect();
+				sntpInit();
 				vPortFree((void *)newWifiSsid);
 				vPortFree((void *)newWifiPassword);
 				newWifiSsid = newWifiPassword = NULL;
@@ -459,7 +461,8 @@ void plcTaskSend(void *pvParameters)
 				if (txRec->len)
 					fillPLCTxData(txRec->data, txRec->len);
 
-				setPLCtxDA(TX_DA_TYPE_PHYSICAL, txRec->phyAddr);
+				if(txRec->isPhyAddrNew)
+					setPLCtxDA(TX_DA_TYPE_PHYSICAL, txRec->phyAddr);
 
 				writePLCregister(TX_COMMAND_ID_REG, txRec->command);
 
@@ -477,6 +480,7 @@ plc_err_e registerClient(char *brokerPhyAddr, char *tbToken)
 	txRec->len = 20;
 	txRec->command = CUSTOM_CMD_REGISTER_NEW_DEV;
 	txRec->taskToNotify = xConfiguratorTask;
+	txRec->isPhyAddrNew = 1;
 
 	memcpy(txRec->phyAddr, brokerPhyAddr, 8);
 	memcpy(txRec->data, tbToken, 20);
@@ -487,7 +491,7 @@ plc_err_e registerClient(char *brokerPhyAddr, char *tbToken)
 
 	// First notification received with information if TX data acknowledged.
 	plc_err_e result;
-	if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *) &result, pdMS_TO_TICKS(20000)) != pdTRUE)
+	if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(20000)) != pdTRUE)
 	{
 		result = PLC_ERR_TIMEOUT;
 		txRec->taskToNotify = NULL;
@@ -495,7 +499,7 @@ plc_err_e registerClient(char *brokerPhyAddr, char *tbToken)
 
 	if (result == PLC_ERR_OK)
 	{
-		if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *) &result, pdMS_TO_TICKS(20000)) != pdTRUE)
+		if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(20000)) != pdTRUE)
 			result = PLC_ERR_TIMEOUT;
 	}
 
@@ -511,6 +515,7 @@ void registerNewClientTask(void *pvParameters)
 	plcTxRecord_s *txRec = &plcTxBuf[plcTxBufHead];
 	getPLCrxSA(txRec->phyAddr);
 	memcpy(newClient->plcPhyAddr, txRec->phyAddr, 8);
+	txRec->isPhyAddrNew = 1;
 
 	if (packetLen != 20)
 	{
@@ -518,11 +523,10 @@ void registerNewClientTask(void *pvParameters)
 		txRec->len = 0;
 		txRec->command = CUSTOM_CMD_REGISTRATION_FAILED;
 		txRec->taskToNotify = NULL;
-
 		plcTxBufHead = (plcTxBufHead + 1) & PLC_TX_BUF_MASK;
 		xTaskNotifyGive(xPLCTaskSend);
 
-		printf("Wrong packet name\n\r");
+		printf("Wrong packet length\n\r");
 	}
 	else
 	{
@@ -535,7 +539,7 @@ void registerNewClientTask(void *pvParameters)
 		xTaskNotifyGive(xPLCTaskSend);
 
 		plc_err_e result;
-		if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *) &result, pdMS_TO_TICKS(5000)) != pdTRUE)
+		if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(5000)) != pdTRUE)
 		{
 			result = -1;
 			txRec->taskToNotify = NULL;
@@ -553,13 +557,16 @@ void registerNewClientTask(void *pvParameters)
 
 			struct sdk_station_config config;
 			sdk_wifi_station_get_config(&config);
-			int ssidLen = strlen((char *) config.ssid);
-			int passwordLen = strlen((char *) config.password);
+			int ssidLen = strlen((char *)config.ssid);
+			int passwordLen = strlen((char *)config.password);
 
+			printf("Sending wifi creds: %s %s\n", (char *) config.ssid, (char *) config.password);
 			// Send Wifi ssid over PLC
 			txRec = &plcTxBuf[plcTxBufHead];
 			txRec->len = ssidLen;
 			txRec->command = CUSTOM_CMD_NEW_WIFI_SSID;
+			txRec->taskToNotify = NULL;
+			txRec->isPhyAddrNew = 0;
 			memcpy(txRec->data, config.ssid, ssidLen);
 			plcTxBufHead = (plcTxBufHead + 1) & PLC_TX_BUF_MASK;
 
@@ -567,6 +574,8 @@ void registerNewClientTask(void *pvParameters)
 			txRec = &plcTxBuf[plcTxBufHead];
 			txRec->len = passwordLen;
 			txRec->command = CUSTOM_CMD_NEW_WIFI_PASSWORD;
+			txRec->taskToNotify = NULL;
+			txRec->isPhyAddrNew = 0;
 			memcpy(txRec->data, config.password, passwordLen);
 			plcTxBufHead = (plcTxBufHead + 1) & PLC_TX_BUF_MASK;
 		}
@@ -593,8 +602,7 @@ static void wifiCredsTimeoutHandler(TimerHandle_t xTimer)
 
 static inline void clearWifiCredsAfterTimeoutIfDataNotArrived()
 {
-
 	TimerHandle_t xWifiCredsTimeoutTimer = xTimerCreate("WifiCreds", pdMS_TO_TICKS(15 * 1000),
-														pdFALSE, (void *)1, wifiCredsTimeoutHandler);
+		pdFALSE, (void *)1, wifiCredsTimeoutHandler);
 	xTimerStart(xWifiCredsTimeoutTimer, 0);
 }

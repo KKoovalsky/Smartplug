@@ -194,9 +194,10 @@ typedef struct plcTxRecord
 {
 	uint8_t data[32];
 	uint8_t phyAddr[8];
+	TaskHandle_t taskToNotify;
 	uint8_t command;
 	uint8_t len;
-	TaskHandle_t taskToNotify;
+	uint8_t isPhyAddrNew;
 } plcTxRecord_s;
 
 extern plcTxRecord_s plcTxBuf[PLC_TX_BUF_SIZE];

@@ -34,8 +34,8 @@ void mqttTask(void *pvParameters)
 
 	mqtt_network_new(&network);
 
-	ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 	int ret;
+	// TODO: Add supervisor task which suspends any task which uses Wifi connecitivity when connection is closed.
 	while (1)
 	{
 		printf("Establishing MQTT connection...\n\r");

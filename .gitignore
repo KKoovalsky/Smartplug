@@ -3,3 +3,6 @@ firmware/
 .vscode/
 temp/
 .editorconfig
+GPATH
+GRTAGS
+GTAGS
