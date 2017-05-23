@@ -266,16 +266,6 @@ void fillPLCTxData(uint8_t *buf, uint8_t len)
 	writePLCregisters(buffer, len + 1);
 }
 
-/*
-// TODO: Zrobić inline z onelinerów.
-void sendPLCData(uint8_t *buf, uint8_t len)
-{
-	fillPLCTxData(buf, len);
-	writePLCregister(TX_COMMAND_ID_REG, SEND_REMOTE_DATA);
-	// Po wypełnieniu bufora nakaż wysłać dane poprzez PLC
-	writePLCregister(TX_MESSAGE_LENGTH_REG, SEND_MESSAGE | (len & (32 - 1)));
-}
-*/
 static void hostIntPinHandler(uint8_t pin)
 {
 	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
