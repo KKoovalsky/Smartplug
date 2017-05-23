@@ -5,6 +5,7 @@
 #include "queue.h"
 #include "esp8266.h"
 
+#include <string.h>
 #include "fcntl.h"
 #include "unistd.h"
 
@@ -22,6 +23,8 @@ const char brokerStr[] = "BROKER";
             2. Delete rubbish at the end of file, 
                 which are leftovers from past config data, which was longer than now. */
 
+static void getConfigFileContent(char *buffer, int size);
+
 int initFileSystem()
 {
 	esp_spiffs_init();
@@ -35,7 +38,7 @@ int initFileSystem()
 	return 0;
 }
 
-void saveBrokerConfigDataToFile(PermConfData_s *configData)
+void saveConfigDataToFile(PermConfData_s *configData)
 {
 	int fd = open("smartplug.conf", O_WRONLY, 0);
 	if (fd < 0)
@@ -46,73 +49,24 @@ void saveBrokerConfigDataToFile(PermConfData_s *configData)
 
 	lseek(fd, 0, SEEK_SET);
 
-	write(fd, brokerStr, sizeof(brokerStr) - 1);
+	if (configData->mode == BROKER_CONF)
+		write(fd, brokerStr, sizeof(brokerStr) - 1);
+	else
+		write(fd, clientStr, sizeof(clientStr) - 1);
+
 	write(fd, "\n", 1);
-	write(fd, configData->SSID, configData->SSIDLen);
+	write(fd, configData->ssid, configData->ssidLen);
 	write(fd, "\n", 1);
 	write(fd, configData->password, configData->passwordLen);
 	write(fd, "\n", 1);
-	write(fd, configData->tbToken, configData->tbTokenLen);
+	write(fd, configData->tbToken, 20);
+	write(fd, "\n", 1);
 
-	close(fd);
-}
-
-void saveClientConfigDataToFile(PermConfData_s *configData)
-{
-	int fd = open("smartplug.conf", O_WRONLY, 0);
-	if (fd < 0)
+	if (configData->mode == CLIENT_CONF)
 	{
-		printf("Error opening configuration file\n");
-		return;
+		write(fd, configData->plcPhyAddr, 16);
+		write(fd, "\n", 1);
 	}
-
-	lseek(fd, 0, SEEK_SET);
-
-	write(fd, clientStr, sizeof(clientStr) - 1);
-	write(fd, "\n", 1);
-	write(fd, configData->PLCPhyAddr, configData->PLCPhyAddrLen);
-	write(fd, "\n", 1);
-	write(fd, configData->tbToken, configData->tbTokenLen);
-
-	close(fd);
-}
-
-void saveClientWifiCredentialsToFile(char *newWifiSsid, char *newWifiPassword, 
-	uint8_t newWifiSsidLen, uint8_t newWifiPasswordLen)
-{
-	int fd = open("smartplug.conf", O_RDONLY);
-	if (fd < 0)
-	{
-		printf("Error opening configuration file\n");
-		return;
-	}
-
-	char buffer[32 + 64 + 20 + 8];
-	lseek(fd, 0, SEEK_SET);
-	read(fd, buffer, sizeof(buffer));
-	close(fd);
-
-	char *p = strchr(buffer, '\n');
-	if(p != NULL)
-		p = strchr(p + 1, '\n');
-
-	int wifiCredsStartIndex = 0;
-	if(p != NULL)
-		wifiCredsStartIndex = (p - buffer) + 20 + 1; // 20 chars for Thingsboard token and one for newline
-
-	fd = open("smartplug.conf", O_WRONLY);
-	if (fd < 0)
-	{
-		printf("Error opening configuration file\n");
-		return;
-	}
-
-	lseek(fd, wifiCredsStartIndex, SEEK_SET);
-	write(fd, "\n", 1);
-	write(fd, newWifiSsid, newWifiSsidLen);
-	write(fd, "\n", 1);
-	write(fd, newWifiPassword, newWifiPasswordLen);
-	write(fd, "\n", 1);
 	close(fd);
 }
 
@@ -134,46 +88,34 @@ int getDeviceModeFromFile(char *buf)
 	return 0;
 }
 
-void setClientPlcPhyAddrOfBrokerAndTbTokenFromFile()
+static void getConfigFileContent(char *buffer, int size)
 {
-	char buffer[44];
+	// Read file which contains mode of operation.
 	int fd = open("smartplug.conf", O_RDONLY, 0);
 	if (fd < 0)
 	{
 		printf("Error opening configuration file.\n");
-		return;
+		*buffer = '\0';
+		return ;
 	}
 
 	lseek(fd, 0, SEEK_SET);
-	read(fd, buffer, sizeof(buffer));
+	read(fd, buffer, size);
 	close(fd);
-
-	char *p = strtok(buffer, "\n");
-	p = strtok(buffer, "\n");
-	parsePLCPhyAddress((char *)p, (uint8_t *)plcPhyAddr);
-	p = strtok(buffer, "\n");
-	memcpy((char *)myTbToken, p, 20);
 }
 
-void setBrokerTbTokenFromFile()
+void getTbTokenAndBrokerPlcPhyAddrFromFile(char *tbToken, char *plcPhyAddr)
 {
-	char buffer[132];
-	int fd = open("smartplug.conf", O_RDONLY, 0);
-	if (fd < 0)
-	{
-		printf("Error opening configuration file.\n");
-		return;
-	}
-
-	lseek(fd, 0, SEEK_SET);
-	read(fd, buffer, sizeof(buffer));
-	close(fd);
+	char buffer[144];
+	getConfigFileContent(buffer, sizeof(buffer));
 
 	char *p = strtok(buffer, "\n");
-	p = strtok(buffer, "\n");
-	p = strtok(buffer, "\n");
-	p = strtok(buffer, "\n");
-	memcpy((char *)myTbToken, p, 20);
+	p = strtok(NULL, "\n");
+	p = strtok(NULL, "\n");
+	p = strtok(NULL, "\n");
+	if(tbToken) memcpy(tbToken, p, 20);
+	p = strtok(NULL, "\n");
+	if(plcPhyAddr) memcpy(plcPhyAddr, p, 16);
 }
 
 void printFileContent()

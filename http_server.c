@@ -20,7 +20,7 @@ typedef enum {
 } WebsocketClbkUse_e;
 
 TaskHandle_t xHTTPServerTask;
-TaskHandle_t xWSGetAckTaskHandle = NULL;
+static TaskHandle_t xWSGetAckTaskHandle = NULL;
 
 volatile WebsocketClbkUse_e websocketClbkUse = NONE;
 volatile struct tcp_pcb *wsPCB;
@@ -154,25 +154,19 @@ void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
 		int passwordLen = t[4].end - t[4].start;
 
 		char *tbToken = data + t[6].start;
-		int tbTokenLen = t[6].end - t[6].start;
 
-		configData.SSID = (char *)pvPortMalloc(sizeof(char) * (SSIDStrLen + 1));
-		configData.password = (char *)pvPortMalloc(sizeof(char) * (passwordLen + 1));
-		configData.tbToken = (char *)pvPortMalloc(sizeof(char) * (tbTokenLen + 1));
-
-		memcpy(configData.SSID, SSID, SSIDStrLen);
+		memcpy(configData.ssid, SSID, SSIDStrLen);
 		memcpy(configData.password, password, passwordLen);
-		memcpy(configData.tbToken, tbToken, tbTokenLen);
+		memcpy(configData.tbToken, tbToken, 20);
 
-		configData.SSID[SSIDStrLen] = configData.password[passwordLen] = configData.tbToken[tbTokenLen] = '\0';
+		configData.ssid[SSIDStrLen] = configData.password[passwordLen] = configData.tbToken[20] = '\0';
 
-		configData.SSIDLen = (uint8_t)SSIDStrLen;
+		configData.ssidLen = (uint8_t)SSIDStrLen;
 		configData.passwordLen = (uint8_t)passwordLen;
-		configData.tbTokenLen = (uint8_t)tbTokenLen;
 
-		printf("%s %s %s\n", configData.SSID, configData.password, configData.tbToken);
+		printf("%s %s %s\n", configData.ssid, configData.password, configData.tbToken);
 
-		configData.mode = WRITE_WIFI_CONF;
+		configData.mode = BROKER_CONF;
 
 		// Let other task handle this data (this handler should be left asap - it is said by http server documentation)
 		xQueueSend(xConfiguratorQueue, &configData, 0);
@@ -180,30 +174,17 @@ void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
 	else if (!strncmp(configStr, "phyaddr", configStrLen))
 	{
 		char *phyAddr = data + t[2].start;
-		int phyAddrLen = t[2].end - t[2].start;
-
 		char *tbToken = data + t[4].start;
-		int tbTokenLen = t[4].end - t[4].start;
 
-		configData.PLCPhyAddr = (char *)pvPortMalloc(sizeof(char) * (phyAddrLen + 1));
-		configData.tbToken = (char *)pvPortMalloc(sizeof(char) * (tbTokenLen + 1));
+		memcpy(configData.plcPhyAddr, phyAddr, 16);
+		memcpy(configData.tbToken, tbToken, 20);
 
-		memcpy(configData.PLCPhyAddr, phyAddr, phyAddrLen);
-		memcpy(configData.tbToken, tbToken, tbTokenLen);
+		configData.plcPhyAddr[16] = configData.tbToken[20] = '\0';
 
-		configData.PLCPhyAddr[phyAddrLen] = configData.tbToken[tbTokenLen] = '\0';
+		printf("%s %s\n", configData.plcPhyAddr, configData.tbToken);
 
-		printf("%s %s\n", configData.PLCPhyAddr, configData.tbToken);
-
-		configData.PLCPhyAddrLen = (uint8_t)phyAddrLen;
-		configData.tbTokenLen = (uint8_t)tbTokenLen;
-
-		configData.mode = WRITE_PLC_CONF;
+		configData.mode = CLIENT_CONF;
 		xQueueSend(xConfiguratorQueue, &configData, 0);
-	}
-	else
-	{
-		printf("Undefined config command\n");
 	}
 }
 
@@ -398,10 +379,7 @@ void websocket_cb(struct tcp_pcb *pcb, uint8_t *data, u16_t data_len, uint8_t mo
 	if (!strncmp((char *)data, "ACK", 3))
 	{
 		if (xWSGetAckTaskHandle)
-		{
 			xTaskNotifyGive(xWSGetAckTaskHandle);
-			xWSGetAckTaskHandle = NULL;
-		}
 		return;
 	}
 
@@ -459,4 +437,14 @@ void httpd_task(void *pvParameters)
 void sendWsResponse(const uint8_t *msg, int len)
 {
 	websocket_write((struct tcp_pcb *)wsPCB, msg, len, WS_TEXT_MODE);
+}
+
+void sendWsResponseAndWaitForAck(const uint8_t *msg, int len)
+{
+	// Subscribe to get notification when ACK via websocket will be sent.
+	xWSGetAckTaskHandle = xTaskGetCurrentTaskHandle();
+	websocket_write((struct tcp_pcb *)wsPCB, msg, len, WS_TEXT_MODE);
+	// Wait for ACK from websocket
+	ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(10000));
+	xWSGetAckTaskHandle = NULL;
 }

@@ -43,8 +43,6 @@ void user_init(void)
     i2c_init(SCL_PIN, SDA_PIN);
 
     sdk_wifi_station_set_auto_connect(0);
-    
-    xConfiguratorQueue = xQueueCreate(1, sizeof(PermConfData_s));
 
 	xPLCSendSemaphore = xSemaphoreCreateMutex();
 

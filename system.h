@@ -18,14 +18,14 @@
 
 typedef enum
 {
-    WRITE_WIFI_CONF, WRITE_PLC_CONF
-} InitMode_t;
+    BROKER_CONF, CLIENT_CONF
+} ConfigMode_e;
 
 typedef struct PermConfData
 {
-    char *SSID, *password, *PLCPhyAddr, *tbToken;
-    uint8_t SSIDLen, passwordLen, PLCPhyAddrLen, tbTokenLen;
-    InitMode_t mode;
+    char ssid[33], password[65], plcPhyAddr[17], tbToken[21];
+	ConfigMode_e mode;
+    uint8_t ssidLen, passwordLen;
 } PermConfData_s;
 
 struct sdk_station_config;
@@ -34,13 +34,10 @@ extern QueueHandle_t xConfiguratorQueue;
 extern TaskHandle_t xConfiguratorTask;
 
 extern volatile int devType;
-extern volatile char myTbToken[20];
 
 void configuratorTask(void *pvParameters);
 
 void initDeviceByMode();
-
-void parsePLCPhyAddress(char *asciiSrc, uint8_t *binDest);
 
 void fillStationConfig(struct sdk_station_config *config, char *ssid, char *password, 
 	uint8_t ssidLen, uint8_t passwordLen);

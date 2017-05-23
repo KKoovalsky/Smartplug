@@ -20,6 +20,7 @@ void mqttTask(void *pvParameters)
 	data.willFlag = 0;
 	data.MQTTVersion = 3;
 	data.clientID.cstring = MQTT_ID;
+	// TODO: parse argument here
 	data.username.cstring = MQTT_USER;
 	data.password.cstring = MQTT_PASS;
 	data.keepAliveInterval = 60;

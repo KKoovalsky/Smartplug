@@ -143,6 +143,7 @@
 #define CUSTOM_CMD_REGISTRATION_SUCCESS 	0x32
 #define CUSTOM_CMD_NEW_WIFI_SSID			0x33
 #define CUSTOM_CMD_NEW_WIFI_PASSWORD		0x34
+#define CUSTOM_CMD_NEW_MEAS_DATA_BIG		0x35
 
 typedef enum 
 {
@@ -151,7 +152,9 @@ typedef enum
 	PLC_ERR_NO_ACK = -2,
 	PLC_ERR_NO_RESP = -3,
 	PLC_ERR_REGISTRATION_FAILED = -4,
-} plc_err_e;
+	PLC_ERR_NEW_SSID = 1,
+	PLC_ERR_NEW_PASSWORD = 2,
+} PlcErr_e;
 
 #define PHY_ADDR 0x6A
 
@@ -171,6 +174,8 @@ typedef enum
 
 #define PLC_TX_BUF_SIZE 8
 #define PLC_TX_BUF_MASK (PLC_TX_BUF_SIZE - 1)
+
+typedef long time_t;
 
 typedef enum {
 	SET_REMOTE_TX_ENABLE = 1,
@@ -207,8 +212,6 @@ extern TaskHandle_t xPLCTaskRcv;
 extern TaskHandle_t xPLCTaskSend;
 extern SemaphoreHandle_t xPLCSendSemaphore;
 
-extern volatile uint8_t plcPhyAddr[];
-
 uint8_t readPLCregister(uint8_t reg);
 void readPLCregisters(uint8_t reg, uint8_t *buf, uint32_t len);
 void writePLCregister(uint8_t reg, uint8_t val);
@@ -218,8 +221,6 @@ void setPLCtxAddrType(uint8_t txSAtype, uint8_t txDAtype);
 void setPLCtxDA(uint8_t txDAtype, uint8_t *txDA);
 
 void fillPLCTxData(uint8_t *buf, uint8_t len);
-void sendPLCData(uint8_t *buf, uint8_t len);
-
 void setPLCnodeLA(uint8_t logicalAddress);
 void setPLCnodeGA(uint8_t groupAddress);
 void getPLCrxAddrType(uint8_t *rxSAtype, uint8_t *rxDAtype);
@@ -228,12 +229,16 @@ void readPLCrxPacket(uint8_t *rxCommand, uint8_t *rxData, uint8_t *rxDataLength)
 uint8_t readPLCintRegister(void);
 void initPLCdevice(uint8_t nodeLA);
 
+#define setPlcPhyAddrFromPLCChip(X) readPLCregisters(PHY_ADDR, (uint8_t *)(X), 8)
+
 void plcTaskRcv(void *pvParameters);
 void plcTaskSend(void *pvParameters);
 void registerNewClientTask(void *pvParameters);
+PlcErr_e sendPLCData(uint8_t *data,	uint8_t *phyAddr, TaskHandle_t taskToNotify, 
+	uint8_t command, uint8_t len, uint8_t isPhyAddrNew);
 
-plc_err_e registerClient(char *brokerPhyAddr, char *tbToken);
-
+PlcErr_e registerClient(PermConfData_s *configData);
+void sendMeasurementDataToBrokerOverPLC(time_t ts, uint32_t *data, uint8_t len);	
 void initPlcWithDelay();
 
 #endif
