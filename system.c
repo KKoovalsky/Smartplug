@@ -32,8 +32,9 @@ static void startBrokerMode();
 static void startClientMode();
 static void setStationAPMode();
 static void stationAndSntpStartup(void *pvParameters);
+static void setBrokerPlcPhyAddressTask(void *pvParameters);
 static void connectToStation(char *ssid, char *password, int ssidLen, int passwordLen);
-static inline void fillJsonConnectionSuccessStringWithPlcPhyAddr(uint8_t *plcPhyAddr_l);
+static inline void fillJsonConnectionSuccessStringWithPlcPhyAddr(char *plcPhyAddrStr);
 
 // TODO: Add makefile define NULL = THIS (when task self deletion use vTaskDelete(THIS) instead of vTaskDelete(NULL))
 void initDeviceByMode()
@@ -79,13 +80,17 @@ void configuratorTask(void *pvParameters)
 			if (status == STATION_GOT_IP)
 			{
 				devType = BROKER;
-				addClient(createClientLocal(configData.tbToken));
-				fillJsonConnectionSuccessStringWithPlcPhyAddr((uint8_t *)clientListBegin->plcPhyAddr);
+				uint8_t rawPlcPhyAddr[8];
+				setPlcPhyAddrFromPLCChip(rawPlcPhyAddr);
+				convertPlcPhyAddressToString(configData.plcPhyAddr, rawPlcPhyAddr);
+				fillJsonConnectionSuccessStringWithPlcPhyAddr(configData.plcPhyAddr);
 				sendWsResponseAndWaitForAck(wifiConnectionSuccessJson, wifiConnectionSuccessJsonLen);
 				sdk_wifi_set_opmode(STATION_MODE);
 				sdk_wifi_station_connect();
 				sntpInit();
+				addClient(createClient(rawPlcPhyAddr, configData.tbToken));
 				saveConfigDataToFile(&configData);
+				xTaskCreate(mqttTask, "MQTT", 1024, (void *)clientListBegin->tbToken, 2, &xMqttTask);
 				vQueueDelete(xConfiguratorQueue);
 				vTaskDelete(NULL);
 			}
@@ -98,11 +103,10 @@ void configuratorTask(void *pvParameters)
 			if (registerClient(&configData) >= 0)
 			{
 				devType = CLIENT;
-				uint8_t preparedPlcPhyAddr[8];
-				parsePLCPhyAddress(configData.plcPhyAddr, preparedPlcPhyAddr);
-				addClient(createClient(preparedPlcPhyAddr, configData.tbToken));
+				addClient(createClientFromAscii(configData.plcPhyAddr, configData.tbToken));
 				sendWsResponseAndWaitForAck(plcJsonRegisSuccessStr, plcJsonRegisSuccessStrLen);
 				sdk_wifi_set_opmode(STATION_MODE);
+				vTaskDelay(pdMS_TO_TICKS(3000));
 				connectToStation(configData.ssid, configData.password, configData.ssidLen, configData.passwordLen);
 				sntpInit();
 				saveConfigDataToFile(&configData);
@@ -121,10 +125,23 @@ static void stationAndSntpStartup(void *pvParameters)
 	vTaskDelete(NULL);
 }
 
+static void setBrokerPlcPhyAddressTask(void *pvParameters)
+{
+	vTaskDelay(pdMS_TO_TICKS(2000));
+	setPLCtxDA(TX_DA_TYPE_PHYSICAL, (uint8_t *)clientListBegin->plcPhyAddr);
+	vTaskDelete(NULL);
+}
+
+
 static void initCommonOpts()
 {
 	sdk_wifi_set_opmode(STATION_MODE);
 	xTaskCreate(stationAndSntpStartup, "StartUp", 512, NULL, 2, NULL);
+
+	char myTbToken[20], brokerPlcPhyAddr[16];
+	getTbTokenAndBrokerPlcPhyAddrFromFile(myTbToken, brokerPlcPhyAddr);
+	addClient(createClientFromAscii(brokerPlcPhyAddr, myTbToken));
+
 	printFileContent();
 }
 
@@ -132,12 +149,7 @@ static void startBrokerMode()
 {
 	devType = BROKER;
 	initCommonOpts();
-	
-	char myTbToken[20];
-	getTbTokenAndBrokerPlcPhyAddrFromFile(myTbToken, NULL);
-	addClient(createClientLocal(myTbToken));
-
-	xTaskCreate(mqttTask, "MQTT", 1024, NULL, 2, &xMqttTask);
+	xTaskCreate(mqttTask, "MQTT", 1024, (void *)clientListBegin->tbToken, 2, &xMqttTask);
 	printf("Starting broker mode\n");
 }
 
@@ -145,14 +157,7 @@ static void startClientMode()
 {
 	devType = CLIENT;
 	initCommonOpts();
-	
-	char myTbToken[20], brokerPlcPhyAddr[16];
-	uint8_t brokerPlcPhyAddrBinary[8];
-	getTbTokenAndBrokerPlcPhyAddrFromFile(myTbToken, brokerPlcPhyAddr);
-	parsePLCPhyAddress(brokerPlcPhyAddr, brokerPlcPhyAddrBinary);
-	addClient(createClient(brokerPlcPhyAddrBinary, myTbToken));
-	setPLCtxDA(TX_DA_TYPE_PHYSICAL, brokerPlcPhyAddrBinary);
-
+	xTaskCreate(setBrokerPlcPhyAddressTask, "BrokerAddr", 128, NULL, 2, NULL);
 	printf("Starting client mode\n");
 }
 
@@ -200,14 +205,11 @@ static void connectToStation(char *ssid, char *password, int ssidLen, int passwo
 	sdk_wifi_station_connect();
 }
 
-static inline void fillJsonConnectionSuccessStringWithPlcPhyAddr(uint8_t *plcPhyAddr_l)
+static inline void fillJsonConnectionSuccessStringWithPlcPhyAddr(char *plcPhyAddrStr)
 {
 	/* Offset is set at 18 position from end of string because it should omit
 	 * one '}', one '"' and sixteen '-' characters.
 	 */
-	char plcPhyAddrStr[20];
-	snprintf((char *)plcPhyAddrStr, sizeof(plcPhyAddrStr), "%02X%02X%02X%02X%02X%02X%02X%02X",
-			 PLCPHY2STR(plcPhyAddr_l));
 	memcpy((uint8_t *)(wifiConnectionSuccessJson + wifiConnectionSuccessJsonLen - 18),
 		   plcPhyAddrStr, 16);
 }

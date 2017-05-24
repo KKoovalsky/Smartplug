@@ -61,12 +61,9 @@ void saveConfigDataToFile(PermConfData_s *configData)
 	write(fd, "\n", 1);
 	write(fd, configData->tbToken, 20);
 	write(fd, "\n", 1);
+	write(fd, configData->plcPhyAddr, 16);
+	write(fd, "\n", 1);
 
-	if (configData->mode == CLIENT_CONF)
-	{
-		write(fd, configData->plcPhyAddr, 16);
-		write(fd, "\n", 1);
-	}
 	close(fd);
 }
 
@@ -96,7 +93,7 @@ static void getConfigFileContent(char *buffer, int size)
 	{
 		printf("Error opening configuration file.\n");
 		*buffer = '\0';
-		return ;
+		return;
 	}
 
 	lseek(fd, 0, SEEK_SET);
@@ -113,9 +110,11 @@ void getTbTokenAndBrokerPlcPhyAddrFromFile(char *tbToken, char *plcPhyAddr)
 	p = strtok(NULL, "\n");
 	p = strtok(NULL, "\n");
 	p = strtok(NULL, "\n");
-	if(tbToken) memcpy(tbToken, p, 20);
+	if (tbToken)
+		memcpy(tbToken, p, 20);
 	p = strtok(NULL, "\n");
-	if(plcPhyAddr) memcpy(plcPhyAddr, p, 16);
+	if (plcPhyAddr)
+		memcpy(plcPhyAddr, p, 16);
 }
 
 void printFileContent()

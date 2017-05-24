@@ -15,7 +15,7 @@ extern volatile client_s *clientListEnd;
 
 void addClient(client_s *client);
 client_s *createClient(uint8_t *plcPhyAddr, char *tbToken);
-client_s *createClientLocal(char *tbToken);
+client_s *createClientFromAscii(char *plcPhyAddr, char *tbToken);
 
 
 #endif

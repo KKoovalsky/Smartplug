@@ -2,20 +2,11 @@
 #include <stdio.h>
 #include <string.h>
 #include "FreeRTOS.h"
-#include "plc.h"
+#include "parsers.h"
 
 // TODO: Parse PLC Phy address to two integers composing a key
 volatile client_s *clientListBegin = NULL;
 volatile client_s *clientListEnd = NULL;
-
-client_s *createClientLocal(char *tbToken)
-{
-	client_s *newClient = (client_s *)pvPortMalloc(sizeof(client_s));
-	setPlcPhyAddrFromPLCChip(newClient->plcPhyAddr);
-	memcpy(newClient->tbToken, tbToken, 20);
-	newClient->tbToken[20] = '\0';
-	return newClient;
-}
 
 client_s *createClient(uint8_t *plcPhyAddr, char *tbToken)
 {
@@ -24,6 +15,13 @@ client_s *createClient(uint8_t *plcPhyAddr, char *tbToken)
 	memcpy(newClient->tbToken, tbToken, 20);
 	newClient->tbToken[20] = '\0';
 	return newClient;
+}
+
+client_s *createClientFromAscii(char *plcPhyAddr, char *tbToken)
+{
+	uint8_t rawPlcPhyAddr[8];
+	convertPlcPhyAddressToRaw(rawPlcPhyAddr, plcPhyAddr);
+	return createClient(rawPlcPhyAddr, tbToken);
 }
 
 void addClient(client_s *client)

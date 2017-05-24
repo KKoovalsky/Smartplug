@@ -152,13 +152,13 @@ typedef enum
 	PLC_ERR_NO_ACK = -2,
 	PLC_ERR_NO_RESP = -3,
 	PLC_ERR_REGISTRATION_FAILED = -4,
+	PLC_ERR_NOT_WIFI_CREDS = -5,
+	PLC_ERR_IDLE = -6,
 	PLC_ERR_NEW_SSID = 1,
-	PLC_ERR_NEW_PASSWORD = 2,
+	PLC_ERR_NEW_PASSWORD = 2
 } PlcErr_e;
 
 #define PHY_ADDR 0x6A
-
-#define PLCPHY2STR(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5], (a)[6], (a)[7]
 
 #define MASTER_GROUP_ADDR 10
 

@@ -324,7 +324,7 @@ void plcTaskRcv(void *pvParameters)
 		{
 			plcTxRecord_s *txRec = &plcTxBuf[plcTxBufTail];
 			if (txRec->taskToNotify)
-				xTaskNotify(txRec->taskToNotify, 0, eSetValueWithoutOverwrite);
+				xTaskNotify(txRec->taskToNotify, PLC_ERR_OK, eSetValueWithoutOverwrite);
 
 			plcTxBufTail = (plcTxBufTail + 1) & PLC_TX_BUF_MASK;
 
@@ -343,26 +343,30 @@ static inline void handleReceivedDataBasingOnCommandReceived()
 {
 	unsigned int cmdReg = readPLCregister(RX_COMMAND_ID_REG);
 	printf("PLC: New RX data available.\n\r");
-	PlcErr_e result = PLC_ERR_NEW_SSID;
+	PlcErr_e result = PLC_ERR_IDLE;
 	switch (cmdReg)
 	{
 	case CUSTOM_CMD_REGISTER_NEW_DEV:
 		if (devType == BROKER)
 			xTaskCreate(registerNewClientTask, "Regis", 256, NULL, 4, &xTaskNewClientRegis);
 		break;
-	case CUSTOM_CMD_REGISTRATION_FAILED:
-		break;
 	case CUSTOM_CMD_REGISTRATION_SUCCESS:
 		if (xTaskNewClientRegis)
 			xTaskNotify(xTaskNewClientRegis, 1, eSetValueWithoutOverwrite);
 		break;
+	case CUSTOM_CMD_REGISTRATION_FAILED:
+		result = PLC_ERR_REGISTRATION_FAILED;
+		break;
 	case CUSTOM_CMD_NEW_WIFI_PASSWORD:
 		result = PLC_ERR_NEW_PASSWORD;
+		break;
 	case CUSTOM_CMD_NEW_WIFI_SSID:
-		if (xWifiCredsTaskHandle)
-			xTaskNotify(xWifiCredsTaskHandle, result, eSetValueWithoutOverwrite);
+		result = PLC_ERR_NEW_SSID;
 		break;
 	}
+
+	if ((result != PLC_ERR_IDLE) && xWifiCredsTaskHandle)
+		xTaskNotify(xWifiCredsTaskHandle, result, eSetValueWithoutOverwrite);
 }
 
 void plcTaskSend(void *pvParameters)
@@ -401,17 +405,17 @@ void plcTaskSend(void *pvParameters)
 // TODO: split into different files client side and broker side functions.
 PlcErr_e registerClient(PermConfData_s *configData)
 {
-	uint8_t preparedPlcPhyAddr[8];
-	parsePLCPhyAddress(configData->plcPhyAddr, preparedPlcPhyAddr);
+	uint8_t rawPlcPhyAddr[8];
+	convertPlcPhyAddressToRaw(rawPlcPhyAddr, configData->plcPhyAddr);
 
 	TaskHandle_t currentTask = xTaskGetCurrentTaskHandle();
-	PlcErr_e result = sendPLCData((uint8_t *)configData->tbToken, preparedPlcPhyAddr, currentTask,
-								   CUSTOM_CMD_REGISTER_NEW_DEV, 20, 1);
+	PlcErr_e result = sendPLCData((uint8_t *)configData->tbToken, rawPlcPhyAddr, currentTask,
+								  CUSTOM_CMD_REGISTER_NEW_DEV, 20, 1);
 
 	if (result >= 0)
 	{
 		xWifiCredsTaskHandle = currentTask;
-		if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(3000) != pdTRUE))
+		if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(3000)) != pdTRUE)
 			result = PLC_ERR_TIMEOUT;
 
 		if (result == PLC_ERR_NEW_SSID)
@@ -419,7 +423,7 @@ PlcErr_e registerClient(PermConfData_s *configData)
 			readPLCrxPacket(NULL, (uint8_t *)configData->ssid, &configData->ssidLen);
 			configData->ssid[configData->ssidLen] = '\0';
 
-			if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(3000) != pdTRUE))
+			if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(3000)) != pdTRUE)
 				result = PLC_ERR_TIMEOUT;
 
 			if (result == PLC_ERR_NEW_PASSWORD)
@@ -429,7 +433,11 @@ PlcErr_e registerClient(PermConfData_s *configData)
 
 				result = sendPLCData(NULL, NULL, NULL, CUSTOM_CMD_REGISTRATION_SUCCESS, 0, 0);
 			}
+			else
+				result = PLC_ERR_NOT_WIFI_CREDS;
 		}
+		else
+			result = PLC_ERR_NOT_WIFI_CREDS;
 	}
 
 	xWifiCredsTaskHandle = NULL;
@@ -486,7 +494,7 @@ void registerNewClientTask(void *pvParameters)
 }
 
 PlcErr_e sendPLCData(uint8_t *data, uint8_t *phyAddr, TaskHandle_t taskToNotify,
-					  uint8_t command, uint8_t len, uint8_t isPhyAddrNew)
+					 uint8_t command, uint8_t len, uint8_t isPhyAddrNew)
 {
 	plcTxRecord_s *txRec = &plcTxBuf[plcTxBufHead];
 	txRec->len = len;
@@ -508,12 +516,12 @@ PlcErr_e sendPLCData(uint8_t *data, uint8_t *phyAddr, TaskHandle_t taskToNotify,
 	PlcErr_e result = PLC_ERR_OK;
 	if (taskToNotify)
 	{
-		if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(3000) != pdTRUE))
+		if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(3000)) != pdTRUE)
 		{
 			txRec->taskToNotify = NULL;
 			result = PLC_ERR_TIMEOUT;
 		}
 	}
-
+	
 	return result;
 }
