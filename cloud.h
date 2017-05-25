@@ -16,6 +16,4 @@
 
 void mqttTask(void *pvParameters);
 
-extern TaskHandle_t xMqttTask;
-
 #endif

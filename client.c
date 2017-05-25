@@ -7,6 +7,7 @@
 // TODO: Parse PLC Phy address to two integers composing a key
 volatile client_s *clientListBegin = NULL;
 volatile client_s *clientListEnd = NULL;
+volatile int clientCnt = 0;
 
 client_s *createClient(uint8_t *plcPhyAddr, char *tbToken)
 {
@@ -14,6 +15,8 @@ client_s *createClient(uint8_t *plcPhyAddr, char *tbToken)
 	memcpy(newClient->plcPhyAddr, plcPhyAddr, 8);
 	memcpy(newClient->tbToken, tbToken, 20);
 	newClient->tbToken[20] = '\0';
+	newClient->next = NULL;
+	clientCnt++;
 	return newClient;
 }
 

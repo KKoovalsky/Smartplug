@@ -31,6 +31,7 @@ static void initCommonOpts();
 static void startBrokerMode();
 static void startClientMode();
 static void setStationAPMode();
+static void startMqttTaskForEachClient();
 static void stationAndSntpStartup(void *pvParameters);
 static void setBrokerPlcPhyAddressTask(void *pvParameters);
 static void connectToStation(char *ssid, char *password, int ssidLen, int passwordLen);
@@ -90,7 +91,8 @@ void configuratorTask(void *pvParameters)
 				sntpInit();
 				addClient(createClient(rawPlcPhyAddr, configData.tbToken));
 				saveConfigDataToFile(&configData);
-				xTaskCreate(mqttTask, "MQTT", 1024, (void *)clientListBegin->tbToken, 2, &xMqttTask);
+				xTaskCreate(mqttTask, "Mqtt0", 1024, (void *)clientListBegin, 2, 
+							(TaskHandle_t *) &clientListBegin->mqttTask);
 				vQueueDelete(xConfiguratorQueue);
 				vTaskDelete(NULL);
 			}
@@ -107,6 +109,7 @@ void configuratorTask(void *pvParameters)
 				sendWsResponseAndWaitForAck(plcJsonRegisSuccessStr, plcJsonRegisSuccessStrLen);
 				sdk_wifi_set_opmode(STATION_MODE);
 				vTaskDelay(pdMS_TO_TICKS(3000));
+				printf("%s %s %d %d\n", configData.ssid, configData.password, configData.ssidLen, configData.passwordLen);
 				connectToStation(configData.ssid, configData.password, configData.ssidLen, configData.passwordLen);
 				sntpInit();
 				saveConfigDataToFile(&configData);
@@ -115,6 +118,19 @@ void configuratorTask(void *pvParameters)
 			}
 			sendWsResponse(plcJsonRegisUnsuccessStr, plcJsonRegisUnsuccessStrLen);
 		}
+	}
+}
+
+static void startMqttTaskForEachClient()
+{
+	client_s *c = (client_s *) clientListBegin;
+	int i = 0;
+	while(c)
+	{
+		char buffer[16] = "Mqtt";
+		sprintf(buffer + 4, "%d", i++);
+		xTaskCreate(mqttTask, buffer, 1024, (void *)c, 2, &c->mqttTask);
+		c = c->next;
 	}
 }
 
@@ -149,7 +165,8 @@ static void startBrokerMode()
 {
 	devType = BROKER;
 	initCommonOpts();
-	xTaskCreate(mqttTask, "MQTT", 1024, (void *)clientListBegin->tbToken, 2, &xMqttTask);
+	retrieveClientListFromFile();
+	startMqttTaskForEachClient();
 	printf("Starting broker mode\n");
 }
 

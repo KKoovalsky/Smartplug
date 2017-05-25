@@ -14,6 +14,7 @@
 #include "sntp_sync.h"
 #include "spiffs_local.h"
 #include "parsers.h"
+#include "cloud.h"
 
 #define DEBUG_PLC
 #define HOST_INT_PIN 13
@@ -478,6 +479,11 @@ void registerNewClientTask(void *pvParameters)
 				{
 					printf("Registration successful\n");
 					addClient(newClient);
+					saveClientDataToFile(newClient);
+					char buffer[16] = "Mqtt";
+					sprintf(buffer + 4, "%d", clientCnt - 1);
+					xTaskCreate(mqttTask, buffer, 1024, (void *)clientListEnd, 2,
+								(TaskHandle_t *)&clientListEnd->mqttTask);
 				}
 			}
 		}
@@ -522,6 +528,6 @@ PlcErr_e sendPLCData(uint8_t *data, uint8_t *phyAddr, TaskHandle_t taskToNotify,
 			result = PLC_ERR_TIMEOUT;
 		}
 	}
-	
+
 	return result;
 }

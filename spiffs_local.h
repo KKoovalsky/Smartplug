@@ -4,6 +4,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
+#include "client.h"
 
 typedef struct PermConfData PermConfData_s;
 
@@ -15,6 +16,8 @@ int initFileSystem();
 void saveConfigDataToFile(PermConfData_s *);
 int getDeviceModeFromFile(char *);
 void getTbTokenAndBrokerPlcPhyAddrFromFile(char *tbToken, char *plcPhyAddr);
+void saveClientDataToFile(client_s *newClient);
+void retrieveClientListFromFile();
 void printFileContent();
 
 #endif

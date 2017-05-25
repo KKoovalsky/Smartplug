@@ -9,4 +9,5 @@ uint8_t getUint8FromHexChar(char c);
 void convertPlcPhyAddressToRaw(uint8_t *rawDest, char *asciiSrc);
 void convertPlcPhyAddressToString(char *asciiDst, uint8_t *rawSrc);
 
+
 #endif

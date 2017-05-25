@@ -15,6 +15,7 @@
 #include "http_server.h"
 #include "system.h"
 #include "plc.h"
+#include "parsers.h"
 
 const char clientStr[] = "CLIENT";
 const char brokerStr[] = "BROKER";
@@ -115,6 +116,48 @@ void getTbTokenAndBrokerPlcPhyAddrFromFile(char *tbToken, char *plcPhyAddr)
 	p = strtok(NULL, "\n");
 	if (plcPhyAddr)
 		memcpy(plcPhyAddr, p, 16);
+}
+
+void saveClientDataToFile(client_s *newClient)
+{
+	char plcPhyAddrStr[17];
+	convertPlcPhyAddressToString(plcPhyAddrStr, newClient->plcPhyAddr);
+
+	int fd = open("client.list", O_WRONLY, 0);
+	if (fd < 0)
+	{
+		printf("Error opening file\n");
+		return;
+	}
+
+	lseek(fd, 0, SEEK_END);
+	write(fd, plcPhyAddrStr, 16);
+	write(fd, " ", 1);
+	write(fd, newClient->tbToken, 20);
+	write(fd, "\n", 1);
+	close(fd);
+}
+
+void retrieveClientListFromFile()
+{
+	int fd = open("client.list", O_RDONLY, 0);
+	if (fd < 0)
+	{
+		printf("Error opening file\n");
+		return;
+	}
+
+	struct stat fileStat;
+	fstat(fd, &fileStat);
+	printf("Size of client.list file: %d\n", (int)fileStat.st_size);
+	lseek(fd, 0, SEEK_END);
+
+	char buffer[16 + 1 + 20 + 1];
+	int clientCnt = fileStat.st_size / sizeof(buffer);
+	while(clientCnt --)
+		addClient(createClientFromAscii(buffer, buffer + 17));
+	
+	close(fd);
 }
 
 void printFileContent()

@@ -1,13 +1,11 @@
 #include "cloud.h"
 #include "espressif/esp_common.h"
-
 #include <FreeRTOS.h>
 #include <task.h>
-
 #include <paho_mqtt_c/MQTTESP8266.h>
 #include <paho_mqtt_c/MQTTClient.h>
-
-TaskHandle_t xMqttTask;
+#include "client.h"
+#include "parsers.h"
 
 void mqttTask(void *pvParameters)
 {
@@ -17,11 +15,14 @@ void mqttTask(void *pvParameters)
 	uint8_t mqttReadBuf[128];
 	mqtt_packet_connect_data_t data = mqtt_packet_connect_data_initializer;
 
+	char mqttId[20];
+	client_s *clientCreds = (client_s *) pvParameters;
+	convertPlcPhyAddressToString(mqttId, clientCreds->plcPhyAddr);
+
 	data.willFlag = 0;
 	data.MQTTVersion = 3;
-	data.clientID.cstring = MQTT_ID;
-	// TODO: parse argument here
-	data.username.cstring = (char *) pvParameters;
+	data.clientID.cstring = mqttId;
+	data.username.cstring = clientCreds->tbToken;
 	data.password.cstring = MQTT_PASS;
 	data.keepAliveInterval = 60;
 	data.cleansession = 0;
@@ -39,6 +40,7 @@ void mqttTask(void *pvParameters)
 	// TODO: Add supervisor task which suspends any task which uses Wifi connecitivity when connection is closed.
 	while (1)
 	{
+		printf("%s %s\n", data.username.cstring, data.clientID.cstring);
 		printf("Establishing MQTT connection...\n\r");
 		ret = mqtt_network_connect(&network, MQTT_HOST, MQTT_PORT);
 		if (ret != MQTT_SUCCESS)
