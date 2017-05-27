@@ -31,8 +31,13 @@
                 </tr>
                 <tr>
                     <td><b>Thingsboard access token:</b></td>
-                    <td><input type="text" id="wifi_things_token"></td>
-                    <td id="wifi_things_token_alert" class="alert_td"></td>
+                    <td><input type="text" id="thingsboard_token"></td>
+                    <td id="thingsboard_token_alert" class="alert_td"></td>
+                </tr>
+                <tr>
+                    <td><b>Device name:</b></td>
+                    <td><input type="text" id="broker_device_name"></td>
+                    <td id="broker_device_name_alert" class="alert_td"></td>
                 </tr>
             </table>
             <input type="button" id="wifi-opts" value="Set broker mode" onclick="setBrokerMode()">
@@ -47,9 +52,9 @@
                     <td id="plc_phy_addr_alert" class="alert_td"></td>
                 </tr>
                 <tr>
-                    <td><b>Thingsboard access token:</b></td>
-                    <td><input type="text" id="plc_things_token"></td>
-                    <td id="plc_things_token_alert" class="alert_td"></td>
+                    <td><b>Device name:</b></td>
+                    <td><input type="text" id="client_device_name"></td>
+                    <td id="client_device_name_alert" class="alert_td"></td>
                 </tr>
             </table>
             <input type="button" name="ok-butt-plc-opts" id="plc-opts" value="Set client mode" onclick="setClientMode()">
@@ -167,24 +172,45 @@
         }
 
         function setBrokerMode() {
-            var wifi = new Object();
+            var brokerCreds = new Object();
             clearAlertMsgs();
-            wifi.ssid = document.getElementById('ssid').value;
-            if (wifi.ssid == "") {
+            brokerCreds.ssid = document.getElementById('ssid').value;
+            if (brokerCreds.ssid == "") {
                 setAlertMsg("WiFi SSID not provided.", 'ssid_alert');
                 return;
             }
-            wifi.password = document.getElementById('password').value;
-            if (wifi.password == "") {
+            if (brokerCreds.ssid.length > 32) {
+                setAlertMsg("Wifi SSID too long.", 'ssid_alert');
+                return;
+            }
+            brokerCreds.password = document.getElementById('password').value;
+            if (brokerCreds.password == "") {
                 setAlertMsg("WiFi password not provided.", 'password_alert');
                 return;
             }
-            wifi.tb_token = document.getElementById('wifi_things_token').value;
-            if (wifi.tb_token == "") {
-                setAlertMsg("Thinsgboard device token not provided.", 'wifi_things_token_alert');
+            if (brokerCreds.password.length > 64) {
+                setAlertMsg("WiFi password too long.", 'password_alert');
                 return;
             }
-            var jsonString = JSON.stringify(wifi);
+            brokerCreds.tb_token = document.getElementById('thingsboard_token').value;
+            if (brokerCreds.tb_token == "") {
+                setAlertMsg("Thinsgboard device token not provided.", 'thingsboard_token_alert');
+                return;
+            }
+            if (brokerCreds.tb_token.length != 20) {
+                setAlertMsg("Thingsboard token must be 20 characters long.", 'thingsboard_token_alert');
+                return;
+            }
+            brokerCreds.deviceName = document.getElementById('broker_device_name').value;
+            if (brokerCreds.deviceName == "") {
+                setAlertMsg("Device name not provided.", 'broker_device_name_alert');
+                return;
+            }
+            if (brokerCreds.deviceName.length > 32) {
+                setAlertMsg("Maximum length of device name must not exceed 32 characters.", 'broker_device_name_alert');
+                return;
+            }
+            var jsonString = JSON.stringify(brokerCreds);
             console.log(jsonString);
             wsWrite(jsonString);
             disableButtons();
@@ -192,19 +218,27 @@
         }
 
         function setClientMode() {
-            var plcClient = new Object();
+            var clientCreds = new Object();
             clearAlertMsgs();
-            plcClient.phyaddr = document.getElementById('plc_phy_addr').value;
-            if (plcClient.phyaddr == "") {
+            clientCreds.phyaddr = document.getElementById('plc_phy_addr').value;
+            if (clientCreds.phyaddr == "") {
                 setAlertMsg("Broker PLC physical address not provided.", 'plc_phy_addr_alert');
                 return;
             }
-            plcClient.tb_token = document.getElementById('plc_things_token').value;
-            if (plcClient.tb_token == "") {
-                setAlertMsg("Thinsgboard device token not provided.", 'plc_things_token_alert');
+            if (clientCreds.phyaddr.length != 16) {
+                setAlertMsg("Broker PLC physical address must be 16 characters long", 'plc_phy_addr_alert');
                 return;
             }
-            var jsonString = JSON.stringify(plcClient);
+            clientCreds.deviceName = document.getElementById('client_device_name').value;
+            if (clientCreds.deviceName == "") {
+                setAlertMsg("Device name not provided.", 'client_device_name_alert');
+                return;
+            }
+            if (clientCreds.deviceName.length > 32) {
+                setAlertMsg("Maximum length of device name must not exceed 32 characters.", 'client_device_name_alert');
+                return;
+            }
+            var jsonString = JSON.stringify(clientCreds);
             console.log(jsonString);
             wsWrite(jsonString);
             disableButtons();

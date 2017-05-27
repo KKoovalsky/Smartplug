@@ -15,7 +15,7 @@ int initFileSystem();
 
 void saveConfigDataToFile(PermConfData_s *);
 int getDeviceModeFromFile(char *);
-void getTbTokenAndBrokerPlcPhyAddrFromFile(char *tbToken, char *plcPhyAddr);
+void getCredentialsFromFile(char *ssid, char *wifiPassword, char *tbToken, char *plcPhyAddr, char *deviceName);
 void saveClientDataToFile(client_s *newClient);
 void retrieveClientListFromFile();
 void printFileContent();

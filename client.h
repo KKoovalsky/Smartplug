@@ -8,9 +8,8 @@
 
 typedef struct client {
 	struct client *next;
-	TaskHandle_t mqttTask;
 	uint8_t plcPhyAddr[8];		// PLC Physical address is binary data.
-	char tbToken[20 + 1]; 	// Thingsboard token is an ascii type string so null termination is required
+	char deviceName[32 + 1]; 	// Thingsboard token is an ascii type string so null termination is required
 } client_s;
 
 extern volatile client_s *clientListBegin;
@@ -18,8 +17,8 @@ extern volatile client_s *clientListEnd;
 extern volatile int clientCnt;
 
 void addClient(client_s *client);
-client_s *createClient(uint8_t *plcPhyAddr, char *tbToken);
-client_s *createClientFromAscii(char *plcPhyAddr, char *tbToken);
+client_s *createClient(uint8_t *plcPhyAddr, char *deviceName, int deviceNameLen);
+client_s *createClientFromAscii(char *plcPhyAddr, char *deviceName, int deviceNameLen);
 
 
 #endif

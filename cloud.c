@@ -2,10 +2,13 @@
 #include "espressif/esp_common.h"
 #include <FreeRTOS.h>
 #include <task.h>
+#include <string.h>
 #include <paho_mqtt_c/MQTTESP8266.h>
 #include <paho_mqtt_c/MQTTClient.h>
 #include "client.h"
 #include "parsers.h"
+
+static volatile char *tbToken[21];
 
 void mqttTask(void *pvParameters)
 {
@@ -22,7 +25,7 @@ void mqttTask(void *pvParameters)
 	data.willFlag = 0;
 	data.MQTTVersion = 3;
 	data.clientID.cstring = mqttId;
-	data.username.cstring = clientCreds->tbToken;
+	data.username.cstring = MQTT_HOST;
 	data.password.cstring = MQTT_PASS;
 	data.keepAliveInterval = 60;
 	data.cleansession = 0;
@@ -77,4 +80,15 @@ void mqttTask(void *pvParameters)
 			vTaskDelay(pdMS_TO_TICKS(10000));
 		}
 	}
+}
+
+void setTbToken(char *newTbToken)
+{
+	memcpy(tbToken, newTbToken, 20);
+	tbToken[20] = '\0';
+}
+
+char *getTbToken()
+{
+	return (char *)tbToken;
 }

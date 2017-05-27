@@ -347,22 +347,25 @@ static inline void handleReceivedDataBasingOnCommandReceived()
 	PlcErr_e result = PLC_ERR_IDLE;
 	switch (cmdReg)
 	{
-	case CUSTOM_CMD_REGISTER_NEW_DEV:
+	case REGISTER_NEW_DEV:
 		if (devType == BROKER)
 			xTaskCreate(registerNewClientTask, "Regis", 256, NULL, 4, &xTaskNewClientRegis);
 		break;
-	case CUSTOM_CMD_REGISTRATION_SUCCESS:
+	case REGISTRATION_SUCCESS:
 		if (xTaskNewClientRegis)
 			xTaskNotify(xTaskNewClientRegis, 1, eSetValueWithoutOverwrite);
 		break;
-	case CUSTOM_CMD_REGISTRATION_FAILED:
+	case REGISTRATION_FAILED:
 		result = PLC_ERR_REGISTRATION_FAILED;
 		break;
-	case CUSTOM_CMD_NEW_WIFI_PASSWORD:
+	case NEW_WIFI_PASSWORD:
 		result = PLC_ERR_NEW_PASSWORD;
 		break;
-	case CUSTOM_CMD_NEW_WIFI_SSID:
+	case NEW_WIFI_SSID:
 		result = PLC_ERR_NEW_SSID;
+		break;
+	case NEW_TB_TOKEN:
+		result = PLC_ERR_NEW_TB_TOKEN;
 		break;
 	}
 
@@ -410,8 +413,8 @@ PlcErr_e registerClient(PermConfData_s *configData)
 	convertPlcPhyAddressToRaw(rawPlcPhyAddr, configData->plcPhyAddr);
 
 	TaskHandle_t currentTask = xTaskGetCurrentTaskHandle();
-	PlcErr_e result = sendPLCData((uint8_t *)configData->tbToken, rawPlcPhyAddr, currentTask,
-								  CUSTOM_CMD_REGISTER_NEW_DEV, 20, 1);
+	PlcErr_e result = sendPLCData((uint8_t *)configData->deviceName, rawPlcPhyAddr, currentTask,
+								  REGISTER_NEW_DEV, (uint8_t)configData->deviceNameLen, 1);
 
 	if (result >= 0)
 	{
@@ -432,7 +435,19 @@ PlcErr_e registerClient(PermConfData_s *configData)
 				readPLCrxPacket(NULL, (uint8_t *)configData->password, &configData->passwordLen);
 				configData->password[configData->passwordLen] = '\0';
 
-				result = sendPLCData(NULL, NULL, NULL, CUSTOM_CMD_REGISTRATION_SUCCESS, 0, 0);
+				if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(3000)) != pdTRUE)
+					result = PLC_ERR_TIMEOUT;
+
+				if(result == PLC_ERR_NEW_TB_TOKEN)
+				{
+					uint8_t packetLen;
+					readPLCrxPacket(NULL, (uint8_t *)configData->tbToken, &packetLen);
+					configData->tbToken[20] = '\0';
+
+					if(packetLen == 20)
+						result = sendPLCData(NULL, NULL, NULL, REGISTRATION_SUCCESS, 0, 0);			
+				} else
+					result = PLC_ERR_NOT_WIFI_CREDS;
 			}
 			else
 				result = PLC_ERR_NOT_WIFI_CREDS;
@@ -449,14 +464,12 @@ void registerNewClientTask(void *pvParameters)
 {
 	uint8_t packetLen, command;
 	client_s *newClient = (client_s *)pvPortMalloc(sizeof(client_s));
-	readPLCrxPacket(&command, (uint8_t *)newClient->tbToken, &packetLen);
+	readPLCrxPacket(&command, (uint8_t *)newClient->deviceName, &packetLen);
+	newClient->deviceName[packetLen] = '\0';
 	getPLCrxSA(newClient->plcPhyAddr);
 
-	// TODO: Check now if Thingsboard token is valid
 	// TODO: Send reason of registration failure.
 	PlcErr_e result = PLC_ERR_OK;
-	if (packetLen != 20)
-		result = PLC_ERR_REGISTRATION_FAILED;
 
 	if (result >= 0)
 	{
@@ -465,25 +478,23 @@ void registerNewClientTask(void *pvParameters)
 		int ssidLen = strlen((char *)config.ssid);
 		int passwordLen = strlen((char *)config.password);
 
-		result = sendPLCData(config.ssid, newClient->plcPhyAddr, xTaskNewClientRegis,
-							 CUSTOM_CMD_NEW_WIFI_SSID, ssidLen, 1);
+		result = sendPLCData(config.ssid, newClient->plcPhyAddr, xTaskNewClientRegis, NEW_WIFI_SSID, ssidLen, 1);
 		if (result >= 0)
 		{
-			result = sendPLCData(config.password, NULL, xTaskNewClientRegis,
-								 CUSTOM_CMD_NEW_WIFI_PASSWORD, passwordLen, 0);
+			result = sendPLCData(config.password, NULL, xTaskNewClientRegis, NEW_WIFI_PASSWORD, passwordLen, 0);
 			if (result >= 0)
 			{
-				if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(8000)) != pdTRUE)
-					result = PLC_ERR_TIMEOUT;
-				else
+				result = sendPLCData((uint8_t *) getTbToken(), NULL, xTaskNewClientRegis, NEW_TB_TOKEN, 20, 0);
+				if (result >= 0)
 				{
-					printf("Registration successful\n");
-					addClient(newClient);
-					saveClientDataToFile(newClient);
-					char buffer[16] = "Mqtt";
-					sprintf(buffer + 4, "%d", clientCnt - 1);
-					xTaskCreate(mqttTask, buffer, 1024, (void *)clientListEnd, 2,
-								(TaskHandle_t *)&clientListEnd->mqttTask);
+					if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(8000)) != pdTRUE)
+						result = PLC_ERR_TIMEOUT;
+					else
+					{
+						printf("Registration successful\n");
+						addClient(newClient);
+						saveClientDataToFile(newClient);
+					}
 				}
 			}
 		}
@@ -492,7 +503,7 @@ void registerNewClientTask(void *pvParameters)
 	if (result < 0)
 	{
 		vPortFree(newClient);
-		sendPLCData(NULL, newClient->plcPhyAddr, NULL, CUSTOM_CMD_REGISTRATION_FAILED, 0, 1);
+		sendPLCData(NULL, NULL, NULL, REGISTRATION_FAILED, 0, 0);
 		printf("Registation unsuccessful: %d\n", result);
 	}
 

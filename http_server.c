@@ -62,29 +62,17 @@ const uint8_t plcJsonRegisSuccessStrLen = sizeof(plcJsonRegisSuccessStr) - 1;
 const uint8_t plcJsonRegisUnsuccessStrLen = sizeof(plcJsonRegisUnsuccessStr) - 1;
 const uint8_t plcJsonTooShortPhyAddrStrLen = sizeof(plcJsonTooShortPhyAddrStr) - 1;
 
-static void JSONAddString(char *buf, int *len, char *str)
-{
-	sprintf(buf + *len, "%s", str);
-	*len = strlen(buf);
-}
-
 void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
 {
-	char txBuffer[32];
-	int txBufferLen = 0;
-
 	jsmn_parser jsmnParser;
-	jsmntok_t t[8];
+	jsmntok_t t[10];
 	jsmn_init(&jsmnParser);
 	int r = jsmn_parse(&jsmnParser, data, len, t, sizeof(t) / sizeof(t[0]));
-
 	if (r < 0)
 	{
 		printf("JSON Parsing failed\n");
 		return;
 	}
-
-	JSONAddString(txBuffer, &txBufferLen, "{\"data\":");
 
 	char *configStr = data + t[1].start;
 	int configStrLen = t[1].end - t[1].start;
@@ -95,24 +83,28 @@ void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
 
 	if (!strncmp(configStr, "ssid", configStrLen))
 	{
-		char *SSID = data + t[2].start;
-		int SSIDStrLen = t[2].end - t[2].start;
+		char *ssid = data + t[2].start;
+		int ssidStrLen = t[2].end - t[2].start;
 
 		char *password = data + t[4].start;
 		int passwordLen = t[4].end - t[4].start;
 
 		char *tbToken = data + t[6].start;
 
-		memcpy(configData.ssid, SSID, SSIDStrLen);
+		char *deviceName = data + t[8].start;
+		int deviceNameLen = t[8].end - t[8].start;
+		
+		memcpy(configData.ssid, ssid, ssidStrLen);
 		memcpy(configData.password, password, passwordLen);
 		memcpy(configData.tbToken, tbToken, 20);
+		memcpy(configData.deviceName, deviceName, deviceNameLen);
 
-		configData.ssid[SSIDStrLen] = configData.password[passwordLen] = configData.tbToken[20] = '\0';
+		configData.ssid[ssidStrLen] = configData.password[passwordLen] =
+			configData.tbToken[20] = configData.deviceName[deviceNameLen] = '\0';
 
-		configData.ssidLen = (uint8_t)SSIDStrLen;
+		configData.ssidLen = (uint8_t)ssidStrLen;
 		configData.passwordLen = (uint8_t)passwordLen;
-
-		printf("%s %s %s\n", configData.ssid, configData.password, configData.tbToken);
+		configData.deviceNameLen = (uint8_t)deviceNameLen; 
 
 		configData.mode = BROKER_CONF;
 
@@ -122,14 +114,16 @@ void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
 	else if (!strncmp(configStr, "phyaddr", configStrLen))
 	{
 		char *phyAddr = data + t[2].start;
-		char *tbToken = data + t[4].start;
+		char *deviceName = data + t[4].start;
+		int deviceNameLen = t[4].end - t[4].start;
 
 		memcpy(configData.plcPhyAddr, phyAddr, 16);
-		memcpy(configData.tbToken, tbToken, 20);
+		memcpy(configData.deviceName, deviceName, deviceNameLen);
 
-		configData.plcPhyAddr[16] = configData.tbToken[20] = '\0';
+		configData.plcPhyAddr[16] = configData.deviceName[deviceNameLen] = '\0';
+		configData.deviceNameLen = (uint8_t)deviceNameLen;
 
-		printf("%s %s\n", configData.plcPhyAddr, configData.tbToken);
+		printf("%s %s\n", configData.plcPhyAddr, configData.deviceName);
 
 		configData.mode = CLIENT_CONF;
 		xQueueSend(xConfiguratorQueue, &configData, 0);

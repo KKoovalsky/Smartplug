@@ -64,6 +64,8 @@ void saveConfigDataToFile(PermConfData_s *configData)
 	write(fd, "\n", 1);
 	write(fd, configData->plcPhyAddr, 16);
 	write(fd, "\n", 1);
+	write(fd, configData->deviceName, configData->deviceNameLen);
+	write(fd, "\n", 1);
 
 	close(fd);
 }
@@ -102,20 +104,27 @@ static void getConfigFileContent(char *buffer, int size)
 	close(fd);
 }
 
-void getTbTokenAndBrokerPlcPhyAddrFromFile(char *tbToken, char *plcPhyAddr)
+void getCredentialsFromFile(char *ssid, char *wifiPassword, char *tbToken, char *plcPhyAddr, char *deviceName)
 {
-	char buffer[144];
+	char buffer[172];
 	getConfigFileContent(buffer, sizeof(buffer));
 
 	char *p = strtok(buffer, "\n");
 	p = strtok(NULL, "\n");
+	if(ssid)
+		copyString(ssid, p);
 	p = strtok(NULL, "\n");
+	if(wifiPassword)
+		copyString(wifiPassword, p);
 	p = strtok(NULL, "\n");
-	if (tbToken)
-		memcpy(tbToken, p, 20);
+	if(tbToken)
+		copyString(tbToken, p);
 	p = strtok(NULL, "\n");
 	if (plcPhyAddr)
-		memcpy(plcPhyAddr, p, 16);
+		copyString(plcPhyAddr, p);
+	p = strtok(NULL, "\n");
+	if(deviceName)
+		copyString(deviceName, p);
 }
 
 void saveClientDataToFile(client_s *newClient)
@@ -133,7 +142,7 @@ void saveClientDataToFile(client_s *newClient)
 	lseek(fd, 0, SEEK_END);
 	write(fd, plcPhyAddrStr, 16);
 	write(fd, " ", 1);
-	write(fd, newClient->tbToken, 20);
+	write(fd, newClient->deviceName, strlen(newClient->deviceName));
 	write(fd, "\n", 1);
 	close(fd);
 }
@@ -147,34 +156,23 @@ void retrieveClientListFromFile()
 		return;
 	}
 
-	struct stat fileStat;
-	fstat(fd, &fileStat);
-	printf("Size of client.list file: %d\n", (int)fileStat.st_size);
-	lseek(fd, 0, SEEK_END);
-
-	char buffer[16 + 1 + 20 + 1];
-	int clientCnt = fileStat.st_size / sizeof(buffer);
-	while(clientCnt --)
-		addClient(createClientFromAscii(buffer, buffer + 17));
+	lseek(fd, 0, SEEK_SET);
+	char buffer[(16 + 1 + 32 + 1)];
+	off_t offset = 0;
+	while(read(fd, buffer, sizeof(buffer)) >= 0)
+	{
+		*(strchr(buffer, '\n')) = '\0';
+		int strLen = strlen(buffer + 17);
+		addClient(createClientFromAscii(buffer, buffer + 17, strLen));
+		offset = lseek(fd, offset + 16 + 1 + strLen + 1, SEEK_SET);
+	}
 	
 	close(fd);
 }
 
 void printFileContent()
 {
-	char buffer[146];
-	memset(buffer, 0, sizeof(buffer));
-
-	int fd = open("smartplug.conf", O_RDONLY, 0);
-	if (fd < 0)
-	{
-		printf("Error opening file\n");
-		return;
-	}
-
-	lseek(fd, 0, SEEK_SET);
-	read(fd, buffer, sizeof(buffer));
+	char buffer[182];
+	getConfigFileContent(buffer, sizeof(buffer));
 	printf("%s\n", buffer);
-
-	close(fd);
 }

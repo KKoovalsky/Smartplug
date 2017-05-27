@@ -7,24 +7,22 @@
 // TODO: Parse PLC Phy address to two integers composing a key
 volatile client_s *clientListBegin = NULL;
 volatile client_s *clientListEnd = NULL;
-volatile int clientCnt = 0;
 
-client_s *createClient(uint8_t *plcPhyAddr, char *tbToken)
+client_s *createClient(uint8_t *plcPhyAddr, char *deviceName, int deviceNameLen)
 {
 	client_s *newClient = (client_s *)pvPortMalloc(sizeof(client_s));
 	memcpy(newClient->plcPhyAddr, plcPhyAddr, 8);
-	memcpy(newClient->tbToken, tbToken, 20);
-	newClient->tbToken[20] = '\0';
+	memcpy(newClient->deviceName, deviceName, deviceNameLen);
+	newClient->deviceName[deviceNameLen] = '\0';
 	newClient->next = NULL;
-	clientCnt++;
 	return newClient;
 }
 
-client_s *createClientFromAscii(char *plcPhyAddr, char *tbToken)
+client_s *createClientFromAscii(char *plcPhyAddr, char *deviceName, int deviceNameLen)
 {
 	uint8_t rawPlcPhyAddr[8];
 	convertPlcPhyAddressToRaw(rawPlcPhyAddr, plcPhyAddr);
-	return createClient(rawPlcPhyAddr, tbToken);
+	return createClient(rawPlcPhyAddr, deviceName, deviceNameLen);
 }
 
 void addClient(client_s *client)

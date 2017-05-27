@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 
 uint8_t getUint8FromHexChar(char c)
 {
@@ -29,4 +30,11 @@ void convertPlcPhyAddressToRaw(uint8_t *rawDest, char *asciiSrc)
 void convertPlcPhyAddressToString(char *asciiDst, uint8_t *rawSrc)
 {
 	snprintf(asciiDst, 17, "%02X%02X%02X%02X%02X%02X%02X%02X", PLCPHY2STR(rawSrc));
+}
+
+void copyString(char *dst, char *src)
+{
+	int strLen = strlen(src);
+	memcpy(dst, src, strLen);
+	dst[strLen] = '\0';
 }

@@ -15,5 +15,6 @@
 #include <task.h>
 
 void mqttTask(void *pvParameters);
-
+void setTbToken(char *);
+char *getTbToken();
 #endif
