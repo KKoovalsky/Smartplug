@@ -36,3 +36,25 @@ void addClient(client_s *client)
 	clientListEnd->next = client;
 	clientListEnd = client;
 }
+
+void getDeviceNameByPlcPhyAddr(char *destDeviceName, uint8_t *srcPlcPhyAddr)
+{
+	client_s *client = (client_s *) clientListBegin;
+	while(client)
+	{
+		int i;
+		for(i = 0 ; i < 8 ; i ++)
+		{
+			if(srcPlcPhyAddr[i] != client->plcPhyAddr[i])
+				break;
+		}
+
+		if(i == 8)
+		{
+			copyString(destDeviceName, client->deviceName);
+			break;
+		}
+
+		client = client->next;
+	}
+}

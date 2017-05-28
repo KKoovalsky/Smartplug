@@ -91,7 +91,8 @@ void configuratorTask(void *pvParameters)
 				sntpInit();
 				addClient(createClient(rawPlcPhyAddr, configData.deviceName, configData.deviceNameLen));
 				saveConfigDataToFile(&configData);
-				xTaskCreate(mqttTask, "MQTT", 1536, (void *)clientListBegin, 2, NULL);
+				xMqttQueue = xQueueCreate(8, sizeof(TelemetryData));
+				xTaskCreate(mqttTask, "MQTT", 1536, NULL, 2, NULL);
 				vQueueDelete(xConfiguratorQueue);
 				vTaskDelete(NULL);
 			}
@@ -107,6 +108,7 @@ void configuratorTask(void *pvParameters)
 				addClient(createClientFromAscii(configData.plcPhyAddr, configData.deviceName, 
 					configData.deviceNameLen));
 				sendWsResponseAndWaitForAck(plcJsonRegisSuccessStr, plcJsonRegisSuccessStrLen);
+				setTbToken(configData.tbToken);
 				sdk_wifi_set_opmode(STATION_MODE);
 				connectToStation(configData.ssid, configData.password, configData.ssidLen, configData.passwordLen);
 				sntpInit();
@@ -151,6 +153,8 @@ static void startBrokerMode()
 	devType = BROKER;
 	initCommonOpts();
 	retrieveClientListFromFile();
+	xMqttQueue = xQueueCreate(8, sizeof(TelemetryData));
+	xTaskCreate(mqttTask, "MQTT", 1536, NULL, 2, NULL);
 	printf("Starting broker mode\n");
 }
 

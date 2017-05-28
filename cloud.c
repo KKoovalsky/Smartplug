@@ -9,6 +9,7 @@
 #include "parsers.h"
 
 static volatile char *tbToken[21];
+QueueHandle_t xMqttQueue;
 
 void mqttTask(void *pvParameters)
 {
@@ -31,8 +32,6 @@ void mqttTask(void *pvParameters)
 	data.cleansession = 0;
 
 	mqtt_message_t message;
-	message.payload = MQTT_MSG;
-	message.payloadlen = sizeof(MQTT_MSG) - 1;
 	message.dup = 0;
 	message.qos = MQTT_QOS1;
 	message.retained = 0;
@@ -68,6 +67,13 @@ void mqttTask(void *pvParameters)
 
 		for (;;)
 		{
+			TelemetryData telemetryData;
+			xQueueReceive(xMqttQueue, &telemetryData, portMAX_DELAY);
+
+			char buf[256];
+			message.payloadlen = composeJsonFromTelemetryData(buf, &telemetryData);
+			message.payload = buf;
+
 			ret = mqtt_publish(&client, "v1/devices/me/telemetry", &message);
 			if (ret != MQTT_SUCCESS)
 			{

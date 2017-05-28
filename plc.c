@@ -487,7 +487,7 @@ void registerNewClientTask(void *pvParameters)
 				result = sendPLCData((uint8_t *) getTbToken(), NULL, xTaskNewClientRegis, NEW_TB_TOKEN, 20, 0);
 				if (result >= 0)
 				{
-					if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(8000)) != pdTRUE)
+					if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(4000)) != pdTRUE)
 						result = PLC_ERR_TIMEOUT;
 					else
 					{
