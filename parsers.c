@@ -46,26 +46,19 @@ int composeJsonFromTelemetryData(char *buf, TelemetryData *telemetryData)
 	getDeviceNameByPlcPhyAddr(deviceName, telemetryData->clientPhyAddr);
 	int index = sprintf(buf, "{\"%s\":[", deviceName);
 	uint8_t *data = telemetryData->data;
-	uint8_t *end = data + telemetryData->len;
-	int ts;
-	memcpy(&ts, data, sizeof(time_t));
-	data += 4;
-	while (data != end)
+	for (int i = 0; i < (telemetryData->len) / 10; i++)
 	{
-		int samplesInSeries = (int)*data >> 5;
-		if(!samplesInSeries) samplesInSeries = 1;
-		int tsMs = (((int)*data & 0x1F) << 8) | (*(data + 1));
+		int ts;
+		memcpy(&ts, data, sizeof(time_t));
+		data += sizeof(time_t);
+		int tsMs = ((*(data)&0xFF) << 8) | (*(data + 1) & 0xFF);
 		data += 2;
-		for(int i = 0 ; i < samplesInSeries; i ++)
-		{
-			int power;
-			memcpy(&power, data, sizeof(int));
-			data += 4;
-			index += sprintf(buf + index, "{\"ts\":%d%03d,\"values\":{\"power\":%d}},", 
-							ts + tsMs/1000, tsMs % 1000, power);
-			tsMs += 250;
-		}
+		uint32_t sample;
+		memcpy(&sample, data, sizeof(uint32_t));
+		data += sizeof(uint32_t);
+		index += sprintf(buf + index, "{\"ts\":%d%03d,\"values\":{\"power\":%d}},", ts, tsMs, sample);
 	}
 	index += sprintf(buf + index - 1, "]}");
+	printf("%s\n", buf);
 	return index;
 }

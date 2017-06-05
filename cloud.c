@@ -19,14 +19,10 @@ void mqttTask(void *pvParameters)
 	uint8_t mqttReadBuf[128];
 	mqtt_packet_connect_data_t data = mqtt_packet_connect_data_initializer;
 
-	char mqttId[20];
-	client_s *clientCreds = (client_s *) pvParameters;
-	convertPlcPhyAddressToString(mqttId, clientCreds->plcPhyAddr);
-
 	data.willFlag = 0;
 	data.MQTTVersion = 3;
-	data.clientID.cstring = mqttId;
-	data.username.cstring = MQTT_HOST;
+	data.clientID.cstring = MQTT_ID;
+	data.username.cstring = (char *) tbToken;
 	data.password.cstring = MQTT_PASS;
 	data.keepAliveInterval = 60;
 	data.cleansession = 0;
@@ -83,7 +79,6 @@ void mqttTask(void *pvParameters)
 			}
 			else
 				printf("MQTT Publishing successful\n\r");
-			vTaskDelay(pdMS_TO_TICKS(10000));
 		}
 	}
 }

@@ -21,7 +21,7 @@ typedef struct telemetryData_s
 {
 	uint8_t data[32];
 	uint8_t clientPhyAddr[8];
-	int len;
+	uint8_t len;
 } TelemetryData;
 
 extern QueueHandle_t xMqttQueue;

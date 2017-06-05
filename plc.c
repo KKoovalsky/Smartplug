@@ -367,6 +367,14 @@ static inline void handleReceivedDataBasingOnCommandReceived()
 	case NEW_TB_TOKEN:
 		result = PLC_ERR_NEW_TB_TOKEN;
 		break;
+	case NEW_TELEMETRY_DATA:
+	{
+		TelemetryData td;
+		getPLCrxSA(td.clientPhyAddr);
+		readPLCrxPacket(NULL, td.data, &td.len);
+		xQueueSend(xMqttQueue, &td, 0);
+		break;
+	}
 	}
 
 	if ((result != PLC_ERR_IDLE) && xWifiCredsTaskHandle)

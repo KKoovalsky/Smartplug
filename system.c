@@ -141,10 +141,10 @@ static void initCommonOpts()
 	sdk_wifi_set_opmode(STATION_MODE);
 	xTaskCreate(stationAndSntpStartup, "StartUp", 512, NULL, 2, NULL);
 
-	char brokerDeviceName[33], brokerPlcPhyAddr[17];
-	getCredentialsFromFile(NULL, NULL, NULL, brokerPlcPhyAddr, brokerDeviceName);
+	char brokerDeviceName[33], brokerPlcPhyAddr[17], brokerTbToken[21];
+	getCredentialsFromFile(NULL, NULL, brokerTbToken, brokerPlcPhyAddr, brokerDeviceName);
 	addClient(createClientFromAscii(brokerPlcPhyAddr, brokerDeviceName, strlen(brokerDeviceName)));
-
+	setTbToken(brokerTbToken);
 	printFileContent();
 }
 
