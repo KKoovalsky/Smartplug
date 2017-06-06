@@ -502,6 +502,10 @@ void registerNewClientTask(void *pvParameters)
 						printf("Registration successful\n");
 						addClient(newClient);
 						saveClientDataToFile(newClient);
+						
+						TelemetryData td;
+						td.dataType = TELEMETRY_TYPE_NEW_DEVICE;
+						xQueueSend(xMqttQueue, &td, 0);
 					}
 				}
 			}

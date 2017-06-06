@@ -46,7 +46,7 @@ int composeJsonFromTelemetryData(char *buf, TelemetryData *telemetryData)
 	getDeviceNameByPlcPhyAddr(deviceName, telemetryData->clientPhyAddr);
 	int index = sprintf(buf, "{\"%s\":[", deviceName);
 	uint8_t *data = telemetryData->data;
-	for (int i = 0; i < (telemetryData->len) / 10; i++)
+	for (int i = 0; i < 1 /*(telemetryData->len) / 10*/; i++)
 	{
 		int ts;
 		memcpy(&ts, data, sizeof(time_t));
@@ -59,6 +59,10 @@ int composeJsonFromTelemetryData(char *buf, TelemetryData *telemetryData)
 		index += sprintf(buf + index, "{\"ts\":%d%03d,\"values\":{\"power\":%d}},", ts, tsMs, sample);
 	}
 	index += sprintf(buf + index - 1, "]}");
-	printf("%s\n", buf);
-	return index;
+	return index - 1;
+}
+
+int composeJsonFromNewDevice(char *buf)
+{
+	return sprintf(buf, "{\"device\":\"%s\"}", clientListEnd->deviceName);
 }

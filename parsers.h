@@ -12,5 +12,6 @@ void convertPlcPhyAddressToRaw(uint8_t *rawDest, char *asciiSrc);
 void convertPlcPhyAddressToString(char *asciiDst, uint8_t *rawSrc);
 void copyString(char *dst, char *src);
 int composeJsonFromTelemetryData(char *buf, TelemetryData *telemetryData);
+int composeJsonFromNewDevice(char *buf);
 
 #endif

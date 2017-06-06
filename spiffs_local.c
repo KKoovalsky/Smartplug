@@ -109,20 +109,20 @@ void getCredentialsFromFile(char *ssid, char *wifiPassword, char *tbToken, char 
 	char buffer[172];
 	getConfigFileContent(buffer, sizeof(buffer));
 
-	char *p = strtok(buffer, "\n");
-	p = strtok(NULL, "\n");
+	char *p = strtok(buffer, "\n\r");
+	p = strtok(NULL, "\n\r");
 	if(ssid)
 		copyString(ssid, p);
-	p = strtok(NULL, "\n");
+	p = strtok(NULL, "\n\r");
 	if(wifiPassword)
 		copyString(wifiPassword, p);
-	p = strtok(NULL, "\n");
+	p = strtok(NULL, "\n\r");
 	if(tbToken)
 		copyString(tbToken, p);
-	p = strtok(NULL, "\n");
+	p = strtok(NULL, "\n\r");
 	if (plcPhyAddr)
 		copyString(plcPhyAddr, p);
-	p = strtok(NULL, "\n");
+	p = strtok(NULL, "\n\r");
 	if(deviceName)
 		copyString(deviceName, p);
 }
@@ -159,7 +159,7 @@ void retrieveClientListFromFile()
 	lseek(fd, 0, SEEK_SET);
 	char buffer[(16 + 1 + 32 + 1)];
 	off_t offset = 0;
-	while(read(fd, buffer, sizeof(buffer)) >= 0)
+	while(read(fd, buffer, sizeof(buffer)) > 17)
 	{
 		*(strchr(buffer, '\n')) = '\0';
 		int strLen = strlen(buffer + 17);

@@ -18,6 +18,7 @@
 #include "sntp_sync.h"
 #include "client.h"
 #include "parsers.h"
+#include "power_meter.h"
 
 QueueHandle_t xConfiguratorQueue;
 TaskHandle_t xConfiguratorTask;
@@ -52,7 +53,7 @@ void initDeviceByMode()
 		printf("First run of the device\n");
 		setStationAPMode();
 		xConfiguratorQueue = xQueueCreate(1, sizeof(PermConfData_s));
-		xTaskCreate(httpd_task, "HTTP Daemon", 128, NULL, 2, &xHTTPServerTask);
+		xTaskCreate(httpd_task, "HTTP Daemon", 256, NULL, 2, &xHTTPServerTask);
 		xTaskCreate(configuratorTask, "configConnect", 1536, NULL, 4, &xConfiguratorTask);
 	}
 }
@@ -140,9 +141,15 @@ static void initCommonOpts()
 {
 	sdk_wifi_set_opmode(STATION_MODE);
 	xTaskCreate(stationAndSntpStartup, "StartUp", 512, NULL, 2, NULL);
+	xTaskCreate(getPowerTask, "PowerGet", 512, NULL, 2, NULL);
 
-	char brokerDeviceName[33], brokerPlcPhyAddr[17], brokerTbToken[21];
-	getCredentialsFromFile(NULL, NULL, brokerTbToken, brokerPlcPhyAddr, brokerDeviceName);
+	char ssid[33], password[65], brokerDeviceName[33], brokerPlcPhyAddr[17], brokerTbToken[21];
+	getCredentialsFromFile(ssid, password, brokerTbToken, brokerPlcPhyAddr, brokerDeviceName);
+
+	struct sdk_station_config config;
+	fillStationConfig(&config, ssid, password, strlen(ssid), strlen(password));
+	sdk_wifi_station_set_config(&config);
+
 	addClient(createClientFromAscii(brokerPlcPhyAddr, brokerDeviceName, strlen(brokerDeviceName)));
 	setTbToken(brokerTbToken);
 	printFileContent();

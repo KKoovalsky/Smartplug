@@ -55,12 +55,9 @@ const uint8_t plcJsonRegisSuccessStr[] =
 	"{\"data\":\"stopWs\",\"msg\":\"Succesfully registered client. Closing access point.\"}";
 const uint8_t plcJsonRegisUnsuccessStr[] =
 	"{\"data\":\"enableButtons\",\"msg\":\"Client registration error. Please, check PLC Phy address.\"}";
-const uint8_t plcJsonTooShortPhyAddrStr[] =
-	"{\"data\":\"enableButtons\",\"msg\":\"Client registration error. Too short PLC Phy address\"}";
 
 const uint8_t plcJsonRegisSuccessStrLen = sizeof(plcJsonRegisSuccessStr) - 1;
 const uint8_t plcJsonRegisUnsuccessStrLen = sizeof(plcJsonRegisUnsuccessStr) - 1;
-const uint8_t plcJsonTooShortPhyAddrStrLen = sizeof(plcJsonTooShortPhyAddrStr) - 1;
 
 void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
 {

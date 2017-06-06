@@ -11,6 +11,11 @@
 static volatile char *tbToken[21];
 QueueHandle_t xMqttQueue;
 
+const char telemetryTopic[] = "v1/gateway/telemetry";
+const char newDeviceTopic[] = "v1/gateway/connect";
+
+static inline int registerMqttClientsFromList(mqtt_client_t *mqttClient, mqtt_message_t *mqttMessage);
+
 void mqttTask(void *pvParameters)
 {
 	struct mqtt_network network;
@@ -22,7 +27,7 @@ void mqttTask(void *pvParameters)
 	data.willFlag = 0;
 	data.MQTTVersion = 3;
 	data.clientID.cstring = MQTT_ID;
-	data.username.cstring = (char *) tbToken;
+	data.username.cstring = (char *)tbToken;
 	data.password.cstring = MQTT_PASS;
 	data.keepAliveInterval = 60;
 	data.cleansession = 0;
@@ -35,10 +40,9 @@ void mqttTask(void *pvParameters)
 	mqtt_network_new(&network);
 
 	int ret;
-	// TODO: Add supervisor task which suspends any task which uses Wifi connecitivity when connection is closed.
+
 	while (1)
 	{
-		printf("%s %s\n", data.username.cstring, data.clientID.cstring);
 		printf("Establishing MQTT connection...\n\r");
 		ret = mqtt_network_connect(&network, MQTT_HOST, MQTT_PORT);
 		if (ret != MQTT_SUCCESS)
@@ -59,7 +63,17 @@ void mqttTask(void *pvParameters)
 			continue;
 		}
 		else
-			printf("MQTT CONNECT sent successfull\n\r");
+			printf("MQTT CONNECT sent successfully\n\r");
+
+		ret = registerMqttClientsFromList(&client, &message);
+		if (ret != MQTT_SUCCESS)
+		{
+			printf("Error registering devices\n");
+			mqtt_network_disconnect(&network);
+			continue;
+		}
+		else
+			printf("Succesfull device connect\n");
 
 		for (;;)
 		{
@@ -67,10 +81,21 @@ void mqttTask(void *pvParameters)
 			xQueueReceive(xMqttQueue, &telemetryData, portMAX_DELAY);
 
 			char buf[256];
-			message.payloadlen = composeJsonFromTelemetryData(buf, &telemetryData);
+			const char *topic = NULL;
+			if(telemetryData.dataType == TELEMETRY_TYPE_DATA)
+			{
+				message.payloadlen = composeJsonFromTelemetryData(buf, &telemetryData);
+				topic = telemetryTopic;
+			}
+			else
+			{
+				message.payloadlen = composeJsonFromNewDevice(buf);
+				topic = newDeviceTopic;
+			}
 			message.payload = buf;
 
-			ret = mqtt_publish(&client, "v1/devices/me/telemetry", &message);
+			printf("%s %d\n", (char *)message.payload, message.payloadlen);
+			ret = mqtt_publish(&client, topic, &message);
 			if (ret != MQTT_SUCCESS)
 			{
 				printf("Error while publishing message: %d\n\r", ret);
@@ -92,4 +117,22 @@ void setTbToken(char *newTbToken)
 char *getTbToken()
 {
 	return (char *)tbToken;
+}
+
+static inline int registerMqttClientsFromList(mqtt_client_t *mqttClient, mqtt_message_t *mqttMessage)
+{
+	char buf[52] = "{\"device\":\"";
+	int ret = MQTT_FAILURE;
+	const int firstTxtLen = strlen(buf);
+	for (client_s *client = (client_s *)clientListBegin; client; client = client->next)
+	{
+		mqttMessage->payloadlen = sprintf(buf + firstTxtLen, "%s\"}", client->deviceName) + firstTxtLen;
+		mqttMessage->payload = buf;
+		ret = mqtt_publish(mqttClient, newDeviceTopic, mqttMessage);
+		if (ret != MQTT_SUCCESS)
+			break;
+		else
+			printf("Device connected: %s\n", buf);
+	}
+	return ret;
 }

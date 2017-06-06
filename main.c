@@ -14,7 +14,6 @@
 #include "system.h"
 #include "cloud.h"
 #include "sntp_sync.h"
-#include "power_meter.h"
 
 #define SCL_PIN 5
 #define SDA_PIN 4
@@ -53,6 +52,4 @@ void user_init(void)
     xTaskCreate(blinkTask, "Blink", 256, NULL, 2, NULL);
     xTaskCreate(plcTaskRcv, "PLC Rcv", 256, NULL, 3, &xPLCTaskRcv);
 	xTaskCreate(plcTaskSend, "PLC Send", 256, NULL, 3, &xPLCTaskSend);
-	xTaskCreate(getPowerTask, "PowerGet", 512, NULL, 2, NULL);
-	//xTaskCreate(powerMeterTask, "PowerSend", 512, NULL, 3, NULL);
 }

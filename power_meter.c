@@ -26,6 +26,7 @@ void getPowerTask(void *pvParameters)
 {
 	TelemetryData telemetryData;
 	memcpy(telemetryData.clientPhyAddr, (uint8_t *)clientListBegin->plcPhyAddr, 8);
+	telemetryData.dataType = TELEMETRY_TYPE_DATA;
 	const char commandGetPower[] = {0xA5, 0x07, 0x41, 0x00, 0x0A, 0x44, 0x3B};
 	int index = 0;
 
@@ -40,7 +41,7 @@ void getPowerTask(void *pvParameters)
 		int len = getSSIPacket(rcvArray, &lastWakeTime);
 		if (len < 0)
 		{
-			printf("Error sending packet");
+			printf("Error sending packet\n");
 			vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(400));
 		}
 		else if (len == 7)
