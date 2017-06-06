@@ -11,7 +11,7 @@ uint8_t getUint8FromHexChar(char c);
 void convertPlcPhyAddressToRaw(uint8_t *rawDest, char *asciiSrc);
 void convertPlcPhyAddressToString(char *asciiDst, uint8_t *rawSrc);
 void copyString(char *dst, char *src);
-int composeJsonFromTelemetryData(char *buf, TelemetryData *telemetryData);
+int composeJsonFromTelemetryData(char *buf, char *deviceName, uint8_t *data);
 int composeJsonFromNewDevice(char *buf);
 
 #endif

@@ -40,26 +40,19 @@ void copyString(char *dst, char *src)
 	dst[strLen] = '\0';
 }
 
-int composeJsonFromTelemetryData(char *buf, TelemetryData *telemetryData)
+int composeJsonFromTelemetryData(char *buf, char *deviceName, uint8_t *data)
 {
-	char deviceName[33];
-	getDeviceNameByPlcPhyAddr(deviceName, telemetryData->clientPhyAddr);
-	int index = sprintf(buf, "{\"%s\":[", deviceName);
-	uint8_t *data = telemetryData->data;
-	for (int i = 0; i < 1 /*(telemetryData->len) / 10*/; i++)
-	{
-		int ts;
-		memcpy(&ts, data, sizeof(time_t));
-		data += sizeof(time_t);
-		int tsMs = ((*(data)&0xFF) << 8) | (*(data + 1) & 0xFF);
-		data += 2;
-		uint32_t sample;
-		memcpy(&sample, data, sizeof(uint32_t));
-		data += sizeof(uint32_t);
-		index += sprintf(buf + index, "{\"ts\":%d%03d,\"values\":{\"power\":%d}},", ts, tsMs, sample);
-	}
-	index += sprintf(buf + index - 1, "]}");
-	return index - 1;
+	int ts;
+	memcpy(&ts, data, sizeof(time_t));
+	data += sizeof(time_t);
+	int tsMs = ((*(data)&0xFF) << 8) | (*(data + 1) & 0xFF);
+	data += 2;
+	uint32_t sample;
+	memcpy(&sample, data, sizeof(uint32_t));
+	data += sizeof(uint32_t);
+	if((sample >= 0) && (sample <= 4000 * 1000))
+		return sprintf(buf, "{\"%s\":[{\"ts\":%d%03d,\"values\":{\"power\":%d}}]}", deviceName, ts, tsMs, sample);
+	return -1;
 }
 
 int composeJsonFromNewDevice(char *buf)

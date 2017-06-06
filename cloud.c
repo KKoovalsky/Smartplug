@@ -80,30 +80,45 @@ void mqttTask(void *pvParameters)
 			TelemetryData telemetryData;
 			xQueueReceive(xMqttQueue, &telemetryData, portMAX_DELAY);
 
-			char buf[256];
-			const char *topic = NULL;
-			if(telemetryData.dataType == TELEMETRY_TYPE_DATA)
+			char buf[128] = "";
+			message.payload = buf;
+			if (telemetryData.dataType == TELEMETRY_TYPE_DATA)
 			{
-				message.payloadlen = composeJsonFromTelemetryData(buf, &telemetryData);
-				topic = telemetryTopic;
+				char deviceName[33];
+				getDeviceNameByPlcPhyAddr(deviceName, telemetryData.clientPhyAddr);
+				uint8_t *data = telemetryData.data;
+				for (int i = 0; i < telemetryData.len / 10; i++)
+				{
+					message.payloadlen = composeJsonFromTelemetryData(buf, deviceName, data);
+					printf("%s %d\n", (char *)message.payload, message.payloadlen);
+					if (message.payloadlen > 0)
+					{
+						ret = mqtt_publish(&client, telemetryTopic, &message);
+						if (ret != MQTT_SUCCESS)
+						{
+							printf("Error while publishing message: %d\n\r", ret);
+							mqtt_network_disconnect(&network);
+							break;
+						}
+						else
+							printf("MQTT Publishing successful\n\r");
+					}
+					data += 10;
+				}
 			}
 			else
 			{
 				message.payloadlen = composeJsonFromNewDevice(buf);
-				topic = newDeviceTopic;
+				ret = mqtt_publish(&client, newDeviceTopic, &message);
+				if (ret != MQTT_SUCCESS)
+				{
+					printf("Error while publishing message: %d\n\r", ret);
+					mqtt_network_disconnect(&network);
+					break;
+				}
+				else
+					printf("MQTT Publishing successful\n\r");
 			}
-			message.payload = buf;
-
-			printf("%s %d\n", (char *)message.payload, message.payloadlen);
-			ret = mqtt_publish(&client, topic, &message);
-			if (ret != MQTT_SUCCESS)
-			{
-				printf("Error while publishing message: %d\n\r", ret);
-				mqtt_network_disconnect(&network);
-				break;
-			}
-			else
-				printf("MQTT Publishing successful\n\r");
 		}
 	}
 }
