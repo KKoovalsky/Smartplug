@@ -22,7 +22,7 @@
 TaskHandle_t xPLCTaskRcv;
 TaskHandle_t xPLCTaskSend;
 TaskHandle_t xTaskNewClientRegis;
-static volatile TaskHandle_t xWifiCredsTaskHandle = NULL;
+static volatile TaskHandle_t xClientSideRegistrationHandle = NULL;
 SemaphoreHandle_t xPLCSendSemaphore;
 
 plcTxRecord_s plcTxBuf[PLC_TX_BUF_SIZE];
@@ -32,20 +32,12 @@ volatile uint8_t *newWifiSsid = NULL, *newWifiPassword = NULL;
 
 static void hostIntPinHandler(uint8_t pin);
 static inline void handleReceivedDataBasingOnCommandReceived();
-static void initPlcTimerClbk(TimerHandle_t xTimer);
 
-void initPlcWithDelay()
+void initPlcTask(void *pvParameters)
 {
-	// PLC Chip initialization after two seconds to wait for device startup.
-	TimerHandle_t plcInitTimer = xTimerCreate("PLC init", pdMS_TO_TICKS(2000), pdFALSE, 0, initPlcTimerClbk);
-	xTimerStart(plcInitTimer, 0);
-}
-
-static void initPlcTimerClbk(TimerHandle_t xTimer)
-{
-	printf("Initializing PLC.\n\r");
+	vTaskDelay(pdMS_TO_TICKS(2000));
 	initPLCdevice(0);
-	xTimerDelete(xTimer, 0);
+	vTaskDelete(NULL);
 }
 
 uint8_t readPLCregister(uint8_t reg)
@@ -370,20 +362,19 @@ static inline void handleReceivedDataBasingOnCommandReceived()
 	case NEW_TELEMETRY_DATA:
 	{
 		TelemetryData td;
-		getPLCrxSA(td.clientPhyAddr);
+		getPLCrxSA(td.brokerPhyAddr);
 		readPLCrxPacket(NULL, td.data, &td.len);
 		xQueueSend(xMqttQueue, &td, 0);
 		break;
 	}
 	}
 
-	if ((result != PLC_ERR_IDLE) && xWifiCredsTaskHandle)
-		xTaskNotify(xWifiCredsTaskHandle, result, eSetValueWithoutOverwrite);
+	if ((result != PLC_ERR_IDLE) && xClientSideRegistrationHandle)
+		xTaskNotify(xClientSideRegistrationHandle, result, eSetValueWithoutOverwrite);
 }
 
 void plcTaskSend(void *pvParameters)
 {
-	initPlcWithDelay();
 	xSemaphoreGive(xPLCSendSemaphore);
 	for (;;)
 	{
@@ -415,7 +406,7 @@ void plcTaskSend(void *pvParameters)
 
 // TODO: byte type signedness standarization
 // TODO: split into different files client side and broker side functions.
-PlcErr_e registerClient(PermConfData_s *configData)
+PlcErr_e registerClient(ConfigData *configData)
 {
 	uint8_t rawPlcPhyAddr[8];
 	convertPlcPhyAddressToRaw(rawPlcPhyAddr, configData->plcPhyAddr);
@@ -426,7 +417,7 @@ PlcErr_e registerClient(PermConfData_s *configData)
 
 	if (result >= 0)
 	{
-		xWifiCredsTaskHandle = currentTask;
+		xClientSideRegistrationHandle = currentTask;
 		if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(3000)) != pdTRUE)
 			result = PLC_ERR_TIMEOUT;
 
@@ -446,15 +437,16 @@ PlcErr_e registerClient(PermConfData_s *configData)
 				if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(3000)) != pdTRUE)
 					result = PLC_ERR_TIMEOUT;
 
-				if(result == PLC_ERR_NEW_TB_TOKEN)
+				if (result == PLC_ERR_NEW_TB_TOKEN)
 				{
 					uint8_t packetLen;
 					readPLCrxPacket(NULL, (uint8_t *)configData->tbToken, &packetLen);
 					configData->tbToken[20] = '\0';
 
-					if(packetLen == 20)
-						result = sendPLCData(NULL, NULL, NULL, REGISTRATION_SUCCESS, 0, 0);			
-				} else
+					if (packetLen == 20)
+						result = sendPLCData(NULL, NULL, NULL, REGISTRATION_SUCCESS, 0, 0);
+				}
+				else
 					result = PLC_ERR_NOT_WIFI_CREDS;
 			}
 			else
@@ -464,7 +456,7 @@ PlcErr_e registerClient(PermConfData_s *configData)
 			result = PLC_ERR_NOT_WIFI_CREDS;
 	}
 
-	xWifiCredsTaskHandle = NULL;
+	xClientSideRegistrationHandle = NULL;
 	return result;
 }
 
@@ -479,34 +471,31 @@ void registerNewClientTask(void *pvParameters)
 	// TODO: Send reason of registration failure.
 	PlcErr_e result = PLC_ERR_OK;
 
+	struct sdk_station_config config;
+	sdk_wifi_station_get_config(&config);
+	int ssidLen = strlen((char *)config.ssid);
+	int passwordLen = strlen((char *)config.password);
+
+	result = sendPLCData(config.ssid, newClient->plcPhyAddr, xTaskNewClientRegis, NEW_WIFI_SSID, ssidLen, 1);
 	if (result >= 0)
 	{
-		struct sdk_station_config config;
-		sdk_wifi_station_get_config(&config);
-		int ssidLen = strlen((char *)config.ssid);
-		int passwordLen = strlen((char *)config.password);
-
-		result = sendPLCData(config.ssid, newClient->plcPhyAddr, xTaskNewClientRegis, NEW_WIFI_SSID, ssidLen, 1);
+		result = sendPLCData(config.password, NULL, xTaskNewClientRegis, NEW_WIFI_PASSWORD, passwordLen, 0);
 		if (result >= 0)
 		{
-			result = sendPLCData(config.password, NULL, xTaskNewClientRegis, NEW_WIFI_PASSWORD, passwordLen, 0);
+			result = sendPLCData((uint8_t *)getTbToken(), NULL, xTaskNewClientRegis, NEW_TB_TOKEN, 20, 0);
 			if (result >= 0)
 			{
-				result = sendPLCData((uint8_t *) getTbToken(), NULL, xTaskNewClientRegis, NEW_TB_TOKEN, 20, 0);
-				if (result >= 0)
+				if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(4000)) != pdTRUE)
+					result = PLC_ERR_TIMEOUT;
+				else
 				{
-					if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(4000)) != pdTRUE)
-						result = PLC_ERR_TIMEOUT;
-					else
-					{
-						printf("Registration successful\n");
-						addClient(newClient);
-						saveClientDataToFile(newClient);
-						
-						TelemetryData td;
-						td.dataType = TELEMETRY_TYPE_NEW_DEVICE;
-						xQueueSend(xMqttQueue, &td, 0);
-					}
+					printf("Registration successful\n");
+					addClient(newClient);
+					saveClientDataToFile(newClient);
+
+					TelemetryData td;
+					td.dataType = TELEMETRY_TYPE_NEW_DEVICE;
+					xQueueSend(xMqttQueue, &td, 0);
 				}
 			}
 		}

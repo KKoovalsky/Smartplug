@@ -18,7 +18,7 @@ client_s *createClient(uint8_t *plcPhyAddr, char *deviceName, int deviceNameLen)
 	return newClient;
 }
 
-client_s *createClientFromAscii(char *plcPhyAddr, char *deviceName, int deviceNameLen)
+client_s *createClientFromString(char *plcPhyAddr, char *deviceName, int deviceNameLen)
 {
 	uint8_t rawPlcPhyAddr[8];
 	convertPlcPhyAddressToRaw(rawPlcPhyAddr, plcPhyAddr);

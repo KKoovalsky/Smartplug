@@ -143,8 +143,8 @@
             if (ws === undefined || ws.readyState != 0) {
                 if (retries)
                     setMsg("Problems occured while connecting to device, retrying...");
-                var uri = "/set-config";
-                ws = new WebSocket("ws://" + location.host + uri);
+                var resource = "/set-config";
+                ws = new WebSocket("ws://" + location.host + resource);
                 ws.binaryType = 'arraybuffer';
                 ws.onopen = function(evt) {
                     retries = 0;
@@ -201,12 +201,12 @@
                 setAlertMsg("Thingsboard token must be 20 characters long.", 'thingsboard_token_alert');
                 return;
             }
-            brokerCreds.deviceName = document.getElementById('broker_device_name').value;
-            if (brokerCreds.deviceName == "") {
+            brokerCreds.device_name = document.getElementById('broker_device_name').value;
+            if (brokerCreds.device_name == "") {
                 setAlertMsg("Device name not provided.", 'broker_device_name_alert');
                 return;
             }
-            if (brokerCreds.deviceName.length > 32) {
+            if (brokerCreds.device_name.length > 32) {
                 setAlertMsg("Maximum length of device name must not exceed 32 characters.", 'broker_device_name_alert');
                 return;
             }
@@ -229,12 +229,12 @@
                 setAlertMsg("Broker PLC physical address must be 16 characters long", 'plc_phy_addr_alert');
                 return;
             }
-            clientCreds.deviceName = document.getElementById('client_device_name').value;
-            if (clientCreds.deviceName == "") {
+            clientCreds.device_name = document.getElementById('client_device_name').value;
+            if (clientCreds.device_name == "") {
                 setAlertMsg("Device name not provided.", 'client_device_name_alert');
                 return;
             }
-            if (clientCreds.deviceName.length > 32) {
+            if (clientCreds.device_name.length > 32) {
                 setAlertMsg("Maximum length of device name must not exceed 32 characters.", 'client_device_name_alert');
                 return;
             }

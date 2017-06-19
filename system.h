@@ -26,7 +26,7 @@ typedef struct PermConfData
     char ssid[33], password[65], plcPhyAddr[17], tbToken[21], deviceName[33];
 	ConfigMode_e mode;
     uint8_t ssidLen, passwordLen, deviceNameLen;
-} PermConfData_s;
+} ConfigData;
 
 struct sdk_station_config;
 

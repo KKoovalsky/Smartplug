@@ -235,13 +235,14 @@ void initPLCdevice(uint8_t nodeLA);
 
 #define setPlcPhyAddrFromPLCChip(X) readPLCregisters(PHY_ADDR, (uint8_t *)(X), 8)
 
+void initPlcTask(void *pvParameters);
 void plcTaskRcv(void *pvParameters);
 void plcTaskSend(void *pvParameters);
 void registerNewClientTask(void *pvParameters);
 PlcErr_e sendPLCData(uint8_t *data,	uint8_t *phyAddr, TaskHandle_t taskToNotify, 
 	uint8_t command, uint8_t len, uint8_t isPhyAddrNew);
 
-PlcErr_e registerClient(PermConfData_s *configData);
+PlcErr_e registerClient(ConfigData *configData);
 void sendMeasurementDataToBrokerOverPLC(time_t ts, uint32_t *data, uint8_t len);	
 void initPlcWithDelay();
 

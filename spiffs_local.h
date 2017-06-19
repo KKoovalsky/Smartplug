@@ -6,14 +6,14 @@
 #include "queue.h"
 #include "client.h"
 
-typedef struct PermConfData PermConfData_s;
+typedef struct PermConfData ConfigData;
 
 extern const char clientStr[7];
 extern const char brokerStr[7];
 
 int initFileSystem();
 
-void saveConfigDataToFile(PermConfData_s *);
+void saveConfigDataToFile(ConfigData *);
 int getDeviceModeFromFile(char *);
 void getCredentialsFromFile(char *ssid, char *wifiPassword, char *tbToken, char *plcPhyAddr, char *deviceName);
 void saveClientDataToFile(client_s *newClient);

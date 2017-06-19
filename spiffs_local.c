@@ -39,7 +39,7 @@ int initFileSystem()
 	return 0;
 }
 
-void saveConfigDataToFile(PermConfData_s *configData)
+void saveConfigDataToFile(ConfigData *configData)
 {
 	int fd = open("smartplug.conf", O_WRONLY, 0);
 	if (fd < 0)
@@ -163,7 +163,7 @@ void retrieveClientListFromFile()
 	{
 		*(strchr(buffer, '\n')) = '\0';
 		int strLen = strlen(buffer + 17);
-		addClient(createClientFromAscii(buffer, buffer + 17, strLen));
+		addClient(createClientFromString(buffer, buffer + 17, strLen));
 		offset = lseek(fd, offset + 16 + 1 + strLen + 1, SEEK_SET);
 	}
 	

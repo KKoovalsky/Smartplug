@@ -31,6 +31,8 @@ volatile int devType;
 static void initCommonOpts();
 static void startBrokerMode();
 static void startClientMode();
+static inline void switchToBrokerMode(ConfigData *configData);
+static inline void switchToClientMode(ConfigData *configData);
 static void setStationAPMode();
 static void stationAndSntpStartup(void *pvParameters);
 static void setBrokerPlcPhyAddressTask(void *pvParameters);
@@ -45,14 +47,14 @@ void initDeviceByMode()
 
 	// Check if device is already configured as client or broker, otherwise start HTTP server to get configuration.
 	if (!strncmp(buffer, clientStr, sizeof(clientStr) - 1))
-		startClientMode(true);
+		startClientMode();
 	else if (!strncmp(buffer, brokerStr, sizeof(brokerStr) - 1))
-		startBrokerMode(true);
+		startBrokerMode();
 	else // If its first run of this device, then start HTTP server to get configuration
 	{
 		printf("First run of the device\n");
 		setStationAPMode();
-		xConfiguratorQueue = xQueueCreate(1, sizeof(PermConfData_s));
+		xConfiguratorQueue = xQueueCreate(1, sizeof(ConfigData));
 		xTaskCreate(httpd_task, "HTTP Daemon", 256, NULL, 2, &xHTTPServerTask);
 		xTaskCreate(configuratorTask, "configConnect", 1536, NULL, 4, &xConfiguratorTask);
 	}
@@ -62,7 +64,7 @@ void configuratorTask(void *pvParameters)
 {
 	for (;;)
 	{
-		PermConfData_s configData;
+		ConfigData configData;
 		xQueueReceive(xConfiguratorQueue, &configData, portMAX_DELAY);
 		if (configData.mode == BROKER_CONF)
 		{
@@ -80,21 +82,9 @@ void configuratorTask(void *pvParameters)
 
 			if (status == STATION_GOT_IP)
 			{
-				devType = BROKER;
-				uint8_t rawPlcPhyAddr[8];
-				setPlcPhyAddrFromPLCChip(rawPlcPhyAddr);
-				convertPlcPhyAddressToString(configData.plcPhyAddr, rawPlcPhyAddr);
-				fillJsonConnectionSuccessStringWithPlcPhyAddr(configData.plcPhyAddr);
-				sendWsResponseAndWaitForAck(wifiConnectionSuccessJson, wifiConnectionSuccessJsonLen);
-				setTbToken(configData.tbToken);
-				sdk_wifi_set_opmode(STATION_MODE);
-				sdk_wifi_station_connect();
-				sntpInit();
-				addClient(createClient(rawPlcPhyAddr, configData.deviceName, configData.deviceNameLen));
-				saveConfigDataToFile(&configData);
-				xMqttQueue = xQueueCreate(8, sizeof(TelemetryData));
-				xTaskCreate(mqttTask, "MQTT", 1536, NULL, 2, NULL);
+				switchToBrokerMode(&configData);
 				vQueueDelete(xConfiguratorQueue);
+				vTaskDelete(xHTTPServerTask);
 				vTaskDelete(NULL);
 			}
 
@@ -105,21 +95,45 @@ void configuratorTask(void *pvParameters)
 		{
 			if (registerClient(&configData) >= 0)
 			{
-				devType = CLIENT;
-				addClient(createClientFromAscii(configData.plcPhyAddr, configData.deviceName, 
-					configData.deviceNameLen));
-				sendWsResponseAndWaitForAck(plcJsonRegisSuccessStr, plcJsonRegisSuccessStrLen);
-				setTbToken(configData.tbToken);
-				sdk_wifi_set_opmode(STATION_MODE);
-				connectToStation(configData.ssid, configData.password, configData.ssidLen, configData.passwordLen);
-				sntpInit();
-				saveConfigDataToFile(&configData);
+				switchToClientMode(&configData);
 				vQueueDelete(xConfiguratorQueue);
+				vTaskDelete(xHTTPServerTask);
 				vTaskDelete(NULL);
 			}
 			sendWsResponse(plcJsonRegisUnsuccessStr, plcJsonRegisUnsuccessStrLen);
 		}
 	}
+}
+
+static inline void switchToBrokerMode(ConfigData *configData)
+{
+	devType = BROKER;
+	uint8_t rawPlcPhyAddr[8];
+	setPlcPhyAddrFromPLCChip(rawPlcPhyAddr);
+	convertPlcPhyAddressToString(configData->plcPhyAddr, rawPlcPhyAddr);
+	fillJsonConnectionSuccessStringWithPlcPhyAddr(configData->plcPhyAddr);
+	sendWsResponseAndWaitForAck(wifiConnectionSuccessJson, wifiConnectionSuccessJsonLen);
+	setTbToken(configData->tbToken);
+	sdk_wifi_set_opmode(STATION_MODE);
+	sdk_wifi_station_connect();
+	sntpInit();
+	addClient(createClient(rawPlcPhyAddr, configData->deviceName, configData->deviceNameLen));
+	saveConfigDataToFile(configData);
+	xMqttQueue = xQueueCreate(8, sizeof(TelemetryData));
+	xTaskCreate(mqttTask, "MQTT", 1536, NULL, 2, NULL);
+}
+
+static inline void switchToClientMode(ConfigData *configData)
+{
+	devType = CLIENT;
+	addClient(createClientFromString(configData->plcPhyAddr, configData->deviceName,
+									configData->deviceNameLen));
+	sendWsResponseAndWaitForAck(plcJsonRegisSuccessStr, plcJsonRegisSuccessStrLen);
+	setTbToken(configData->tbToken);
+	sdk_wifi_set_opmode(STATION_MODE);
+	connectToStation(configData->ssid, configData->password, configData->ssidLen, configData->passwordLen);
+	sntpInit();
+	saveConfigDataToFile(configData);
 }
 
 static void stationAndSntpStartup(void *pvParameters)
@@ -136,21 +150,21 @@ static void setBrokerPlcPhyAddressTask(void *pvParameters)
 	vTaskDelete(NULL);
 }
 
-
 static void initCommonOpts()
 {
-	sdk_wifi_set_opmode(STATION_MODE);
 	xTaskCreate(stationAndSntpStartup, "StartUp", 512, NULL, 2, NULL);
 	xTaskCreate(getPowerTask, "PowerGet", 512, NULL, 2, NULL);
 
 	char ssid[33], password[65], brokerDeviceName[33], brokerPlcPhyAddr[17], brokerTbToken[21];
 	getCredentialsFromFile(ssid, password, brokerTbToken, brokerPlcPhyAddr, brokerDeviceName);
+	printf("%s %s %d %d\n", ssid, password, strlen(ssid), strlen(password));
 
 	struct sdk_station_config config;
+	sdk_wifi_set_opmode(STATION_MODE);
 	fillStationConfig(&config, ssid, password, strlen(ssid), strlen(password));
 	sdk_wifi_station_set_config(&config);
 
-	addClient(createClientFromAscii(brokerPlcPhyAddr, brokerDeviceName, strlen(brokerDeviceName)));
+	addClient(createClientFromString(brokerPlcPhyAddr, brokerDeviceName, strlen(brokerDeviceName)));
 	setTbToken(brokerTbToken);
 	printFileContent();
 }

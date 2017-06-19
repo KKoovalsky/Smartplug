@@ -15,6 +15,7 @@ const char telemetryTopic[] = "v1/gateway/telemetry";
 const char newDeviceTopic[] = "v1/gateway/connect";
 
 static inline int registerMqttClientsFromList(mqtt_client_t *mqttClient, mqtt_message_t *mqttMessage);
+static void mqttRpcReceived(mqtt_message_data_t *md);
 
 void mqttTask(void *pvParameters)
 {
@@ -29,7 +30,7 @@ void mqttTask(void *pvParameters)
 	data.clientID.cstring = MQTT_ID;
 	data.username.cstring = (char *)tbToken;
 	data.password.cstring = MQTT_PASS;
-	data.keepAliveInterval = 60;
+	data.keepAliveInterval = 10;
 	data.cleansession = 0;
 
 	mqtt_message_t message;
@@ -75,6 +76,16 @@ void mqttTask(void *pvParameters)
 		else
 			printf("Succesfull device connect\n");
 
+		ret = mqtt_subscribe(&client, "v1/gateway/rpc", MQTT_QOS1, mqttRpcReceived);
+		if (ret != MQTT_SUCCESS)
+		{
+			printf("Error occured while subscribing: %d\n", ret);
+			mqtt_network_disconnect(&network);
+			continue;
+		}
+		else
+			printf("Succesfull subscription\n");
+
 		for (;;)
 		{
 			TelemetryData telemetryData;
@@ -85,8 +96,9 @@ void mqttTask(void *pvParameters)
 			if (telemetryData.dataType == TELEMETRY_TYPE_DATA)
 			{
 				char deviceName[33];
-				getDeviceNameByPlcPhyAddr(deviceName, telemetryData.clientPhyAddr);
+				getDeviceNameByPlcPhyAddr(deviceName, telemetryData.brokerPhyAddr);
 				uint8_t *data = telemetryData.data;
+				bool restart = false;
 				for (int i = 0; i < telemetryData.len / 10; i++)
 				{
 					message.payloadlen = composeJsonFromTelemetryData(buf, deviceName, data);
@@ -98,6 +110,7 @@ void mqttTask(void *pvParameters)
 						{
 							printf("Error while publishing message: %d\n\r", ret);
 							mqtt_network_disconnect(&network);
+							restart = true;
 							break;
 						}
 						else
@@ -105,6 +118,8 @@ void mqttTask(void *pvParameters)
 					}
 					data += 10;
 				}
+				if(restart)
+					break;
 			}
 			else
 			{
@@ -150,4 +165,19 @@ static inline int registerMqttClientsFromList(mqtt_client_t *mqttClient, mqtt_me
 			printf("Device connected: %s\n", buf);
 	}
 	return ret;
+}
+
+static void mqttRpcReceived(mqtt_message_data_t *md)
+{
+	int i;
+	mqtt_message_t *message = md->message;
+	printf("Received: ");
+	for (i = 0; i < md->topic->lenstring.len; ++i)
+		printf("%c", md->topic->lenstring.data[i]);
+
+	printf(" = ");
+	for (i = 0; i < (int)message->payloadlen; ++i)
+		printf("%c", ((char *)(message->payload))[i]);
+
+	printf("\r\n");
 }

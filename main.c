@@ -50,6 +50,7 @@ void user_init(void)
 	initDeviceByMode();
 
     xTaskCreate(blinkTask, "Blink", 256, NULL, 2, NULL);
+	xTaskCreate(initPlcTask, "PLC Init", 256, NULL, 3, NULL);
     xTaskCreate(plcTaskRcv, "PLC Rcv", 256, NULL, 3, &xPLCTaskRcv);
 	xTaskCreate(plcTaskSend, "PLC Send", 256, NULL, 3, &xPLCTaskSend);
 }

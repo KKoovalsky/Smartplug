@@ -59,6 +59,9 @@ const uint8_t plcJsonRegisUnsuccessStr[] =
 const uint8_t plcJsonRegisSuccessStrLen = sizeof(plcJsonRegisSuccessStr) - 1;
 const uint8_t plcJsonRegisUnsuccessStrLen = sizeof(plcJsonRegisUnsuccessStr) - 1;
 
+static inline void sendBrokerConfigDataToConfiguratorTask(char *data, jsmntok_t *t);
+static inline void sendClientConfigDataToConfiguratorTask(char *data, jsmntok_t *t);
+
 void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
 {
 	jsmn_parser jsmnParser;
@@ -72,59 +75,64 @@ void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
 	}
 
 	char *configStr = data + t[1].start;
-	int configStrLen = t[1].end - t[1].start;
-
-	PermConfData_s configData;
+	int configStrLen = t[1].size;
 
 	printf("%.*s\n", configStrLen, configStr);
 
 	if (!strncmp(configStr, "ssid", configStrLen))
-	{
-		char *ssid = data + t[2].start;
-		int ssidStrLen = t[2].end - t[2].start;
-
-		char *password = data + t[4].start;
-		int passwordLen = t[4].end - t[4].start;
-
-		char *tbToken = data + t[6].start;
-
-		char *deviceName = data + t[8].start;
-		int deviceNameLen = t[8].end - t[8].start;
-		
-		memcpy(configData.ssid, ssid, ssidStrLen);
-		memcpy(configData.password, password, passwordLen);
-		memcpy(configData.tbToken, tbToken, 20);
-		memcpy(configData.deviceName, deviceName, deviceNameLen);
-
-		configData.ssid[ssidStrLen] = configData.password[passwordLen] =
-			configData.tbToken[20] = configData.deviceName[deviceNameLen] = '\0';
-
-		configData.ssidLen = (uint8_t)ssidStrLen;
-		configData.passwordLen = (uint8_t)passwordLen;
-		configData.deviceNameLen = (uint8_t)deviceNameLen; 
-
-		configData.mode = BROKER_CONF;
-
-		// Let other task handle this data (this handler should be left asap - it is said by http server documentation)
-		xQueueSend(xConfiguratorQueue, &configData, 0);
-	}
+		sendBrokerConfigDataToConfiguratorTask(data, t);
 	else if (!strncmp(configStr, "phyaddr", configStrLen))
-	{
-		char *phyAddr = data + t[2].start;
-		char *deviceName = data + t[4].start;
-		int deviceNameLen = t[4].end - t[4].start;
+		sendClientConfigDataToConfiguratorTask(data, t);
+}
 
-		memcpy(configData.plcPhyAddr, phyAddr, 16);
-		memcpy(configData.deviceName, deviceName, deviceNameLen);
+static inline void sendBrokerConfigDataToConfiguratorTask(char *data, jsmntok_t *t)
+{
+	ConfigData configData;
 
-		configData.plcPhyAddr[16] = configData.deviceName[deviceNameLen] = '\0';
-		configData.deviceNameLen = (uint8_t)deviceNameLen;
+	char *ssid = data + t[2].start;
+	int ssidStrLen = t[2].size;
+	char *password = data + t[4].start;
+	int passwordLen = t[4].size;
+	char *tbToken = data + t[6].start;
+	char *deviceName = data + t[8].start;
+	int deviceNameLen = t[8].size;
 
-		printf("%s %s\n", configData.plcPhyAddr, configData.deviceName);
+	memcpy(configData.ssid, ssid, ssidStrLen);
+	memcpy(configData.password, password, passwordLen);
+	memcpy(configData.tbToken, tbToken, 20);
+	memcpy(configData.deviceName, deviceName, deviceNameLen);
 
-		configData.mode = CLIENT_CONF;
-		xQueueSend(xConfiguratorQueue, &configData, 0);
-	}
+	configData.ssid[ssidStrLen] = configData.password[passwordLen] =
+		configData.tbToken[20] = configData.deviceName[deviceNameLen] = '\0';
+
+	configData.ssidLen = (uint8_t)ssidStrLen;
+	configData.passwordLen = (uint8_t)passwordLen;
+	configData.deviceNameLen = (uint8_t)deviceNameLen;
+
+	configData.mode = BROKER_CONF;
+
+	// Let other task handle this data (this handler should be left asap - it is said by http server documentation)
+	xQueueSend(xConfiguratorQueue, &configData, 0);
+}
+
+static inline void sendClientConfigDataToConfiguratorTask(char *data, jsmntok_t *t)
+{
+	ConfigData configData;
+
+	char *phyAddr = data + t[2].start;
+	char *deviceName = data + t[4].start;
+	int deviceNameLen = t[4].size;
+
+	memcpy(configData.plcPhyAddr, phyAddr, 16);
+	memcpy(configData.deviceName, deviceName, deviceNameLen);
+
+	configData.plcPhyAddr[16] = configData.deviceName[deviceNameLen] = '\0';
+	configData.deviceNameLen = (uint8_t)deviceNameLen;
+
+	printf("%s %s\n", configData.plcPhyAddr, configData.deviceName);
+
+	configData.mode = CLIENT_CONF;
+	xQueueSend(xConfiguratorQueue, &configData, 0);
 }
 
 char *index_cgi_handler(int iIndex, int iNumParams, char *pcParam[], char *pcValue[])
