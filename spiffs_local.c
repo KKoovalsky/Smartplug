@@ -82,7 +82,7 @@ int getDeviceModeFromFile(char *buf)
 	}
 
 	lseek(fd, 0, SEEK_SET);
-	read(fd, buf, 6);
+	read(fd, buf, 8);
 	close(fd);
 
 	return 0;

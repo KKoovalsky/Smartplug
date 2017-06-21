@@ -119,7 +119,7 @@ static inline void switchToBrokerMode(ConfigData *configData)
 	sntpInit();
 	addClient(createClient(rawPlcPhyAddr, configData->deviceName, configData->deviceNameLen));
 	saveConfigDataToFile(configData);
-	xMqttQueue = xQueueCreate(8, sizeof(TelemetryData));
+	xMqttQueue = xQueueCreate(8, sizeof(MqttData));
 	xTaskCreate(mqttTask, "MQTT", 1536, NULL, 2, NULL);
 }
 
@@ -140,6 +140,11 @@ static void stationAndSntpStartup(void *pvParameters)
 {
 	sdk_wifi_station_connect();
 	sntpInit();
+	while(sdk_wifi_station_get_connect_status() != STATION_GOT_IP)
+	{
+		printf("Not having IP\n\r");
+		vTaskDelay(pdMS_TO_TICKS(1000));
+	}
 	vTaskDelete(NULL);
 }
 
@@ -147,26 +152,20 @@ static void setBrokerPlcPhyAddressTask(void *pvParameters)
 {
 	vTaskDelay(pdMS_TO_TICKS(2000));
 	setPLCtxDA(TX_DA_TYPE_PHYSICAL, (uint8_t *)clientListBegin->plcPhyAddr);
+	vTaskDelay(pdMS_TO_TICKS(10 * 1000));
 	vTaskDelete(NULL);
 }
 
 static void initCommonOpts()
 {
-	xTaskCreate(stationAndSntpStartup, "StartUp", 512, NULL, 2, NULL);
+	xTaskCreate(stationAndSntpStartup, "StartUp", 512, NULL, 4, NULL);
 	xTaskCreate(getPowerTask, "PowerGet", 512, NULL, 2, NULL);
-
-	char ssid[33], password[65], brokerDeviceName[33], brokerPlcPhyAddr[17], brokerTbToken[21];
-	getCredentialsFromFile(ssid, password, brokerTbToken, brokerPlcPhyAddr, brokerDeviceName);
-	printf("%s %s %d %d\n", ssid, password, strlen(ssid), strlen(password));
-
-	struct sdk_station_config config;
-	sdk_wifi_set_opmode(STATION_MODE);
-	fillStationConfig(&config, ssid, password, strlen(ssid), strlen(password));
-	sdk_wifi_station_set_config(&config);
-
+	
+	char brokerDeviceName[33], brokerPlcPhyAddr[17], brokerTbToken[21];
+	getCredentialsFromFile(NULL, NULL, brokerTbToken, brokerPlcPhyAddr, brokerDeviceName);
+	
 	addClient(createClientFromString(brokerPlcPhyAddr, brokerDeviceName, strlen(brokerDeviceName)));
 	setTbToken(brokerTbToken);
-	printFileContent();
 }
 
 static void startBrokerMode()
@@ -174,7 +173,7 @@ static void startBrokerMode()
 	devType = BROKER;
 	initCommonOpts();
 	retrieveClientListFromFile();
-	xMqttQueue = xQueueCreate(8, sizeof(TelemetryData));
+	xMqttQueue = xQueueCreate(6, sizeof(MqttData));
 	xTaskCreate(mqttTask, "MQTT", 1536, NULL, 2, NULL);
 	printf("Starting broker mode\n");
 }

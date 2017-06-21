@@ -138,6 +138,10 @@
 #define STATUS_RX_DATA_AVAILABLE (1 << 1)
 #define STATUS_TX_DATA_SENT (1 << 0)
 
+#define changeRelayState(X)
+
+#include <stdint.h>
+
 typedef enum {
 	REGISTER_NEW_DEV = 0x30,
 	REGISTRATION_FAILED,
@@ -145,7 +149,8 @@ typedef enum {
 	NEW_WIFI_SSID,
 	NEW_WIFI_PASSWORD,
 	NEW_TB_TOKEN,
-	NEW_TELEMETRY_DATA
+	NEW_TELEMETRY_DATA,
+	CHANGE_RELAY_STATE
 } CUSTOM_COMMANDS;
 
 typedef enum 
@@ -161,6 +166,12 @@ typedef enum
 	PLC_ERR_NEW_PASSWORD = 2,
 	PLC_ERR_NEW_TB_TOKEN = 3
 } PlcErr_e;
+
+struct RelayStateChanger
+{
+	int requestNumber;
+	uint8_t deviceNumber, relayState;
+};
 
 #define PHY_ADDR 0x6A
 
@@ -239,6 +250,8 @@ void initPlcTask(void *pvParameters);
 void plcTaskRcv(void *pvParameters);
 void plcTaskSend(void *pvParameters);
 void registerNewClientTask(void *pvParameters);
+void changeRelayStateTask(void *pvParameters);
+
 PlcErr_e sendPLCData(uint8_t *data,	uint8_t *phyAddr, TaskHandle_t taskToNotify, 
 	uint8_t command, uint8_t len, uint8_t isPhyAddrNew);
 

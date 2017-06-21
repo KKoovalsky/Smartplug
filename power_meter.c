@@ -24,9 +24,9 @@ static int getSSIPacket(uint8_t *buf, TickType_t *lastWakeTime);
 
 void getPowerTask(void *pvParameters)
 {
-	TelemetryData telemetryData;
+	MqttData telemetryData;
 	memcpy(telemetryData.brokerPhyAddr, (uint8_t *)clientListBegin->plcPhyAddr, 8);
-	telemetryData.dataType = TELEMETRY_TYPE_DATA;
+	telemetryData.dataType = TYPE_TELEMETRY;
 	const char commandGetPower[] = {0xA5, 0x07, 0x41, 0x00, 0x0A, 0x44, 0x3B};
 	int index = 0;
 

@@ -40,7 +40,7 @@ void copyString(char *dst, char *src)
 	dst[strLen] = '\0';
 }
 
-int composeJsonFromTelemetryData(char *buf, char *deviceName, uint8_t *data)
+int composeJsonFromMqttData(char *buf, char *deviceName, uint8_t *data)
 {
 	int ts;
 	memcpy(&ts, data, sizeof(time_t));

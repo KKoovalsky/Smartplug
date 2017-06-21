@@ -15,6 +15,7 @@ client_s *createClient(uint8_t *plcPhyAddr, char *deviceName, int deviceNameLen)
 	memcpy(newClient->deviceName, deviceName, deviceNameLen);
 	newClient->deviceName[deviceNameLen] = '\0';
 	newClient->next = NULL;
+	newClient->relayState = 0;
 	return newClient;
 }
 

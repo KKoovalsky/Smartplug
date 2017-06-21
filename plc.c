@@ -35,8 +35,9 @@ static inline void handleReceivedDataBasingOnCommandReceived();
 
 void initPlcTask(void *pvParameters)
 {
-	vTaskDelay(pdMS_TO_TICKS(2000));
+	vTaskDelay(pdMS_TO_TICKS(3000));
 	initPLCdevice(0);
+	vTaskDelay(pdMS_TO_TICKS(10 * 1000));
 	vTaskDelete(NULL);
 }
 
@@ -361,10 +362,17 @@ static inline void handleReceivedDataBasingOnCommandReceived()
 		break;
 	case NEW_TELEMETRY_DATA:
 	{
-		TelemetryData td;
+		MqttData td;
 		getPLCrxSA(td.brokerPhyAddr);
 		readPLCrxPacket(NULL, td.data, &td.len);
 		xQueueSend(xMqttQueue, &td, 0);
+		break;
+	}
+	case CHANGE_RELAY_STATE:
+	{
+		uint8_t relayState;
+		readPLCrxPacket(NULL, &relayState, NULL);
+		changeRelayState(relayState);
 		break;
 	}
 	}
@@ -493,8 +501,8 @@ void registerNewClientTask(void *pvParameters)
 					addClient(newClient);
 					saveClientDataToFile(newClient);
 
-					TelemetryData td;
-					td.dataType = TELEMETRY_TYPE_NEW_DEVICE;
+					MqttData td;
+					td.dataType = TYPE_NEW_DEVICE;
 					xQueueSend(xMqttQueue, &td, 0);
 				}
 			}
@@ -542,4 +550,40 @@ PlcErr_e sendPLCData(uint8_t *data, uint8_t *phyAddr, TaskHandle_t taskToNotify,
 	}
 
 	return result;
+}
+
+void changeRelayStateTask(void *pvParameters)
+{
+	struct RelayStateChanger *relayStateChanger = (struct RelayStateChanger *)pvParameters;
+
+	if (relayStateChanger->deviceNumber != 1)
+	{
+		client_s *client = (client_s *)clientListBegin;
+		int i = 1;
+		while (client && i != relayStateChanger->deviceNumber)
+		{
+			client = client->next;
+			i++;
+		}
+
+		if (!client)
+			vTaskDelete(NULL);
+
+		PlcErr_e res = sendPLCData(&relayStateChanger->relayState, client->plcPhyAddr, xTaskGetCurrentTaskHandle(),
+								   CHANGE_RELAY_STATE, 1, 1);
+
+		if (res == PLC_ERR_OK)
+			client->relayState = relayStateChanger->relayState;
+	}
+	else
+	{
+		changeRelayState(relayStateChanger->relayState);
+		clientListBegin->relayState = relayStateChanger->relayState;
+	}
+
+	MqttData rpcResponse;
+	rpcResponse.len = sprintf((char *) rpcResponse.data, "%d", relayStateChanger->requestNumber);
+	rpcResponse.dataType = TYPE_GPIO_STATUS_GET;
+	xQueueSend(xMqttQueue, &rpcResponse, pdMS_TO_TICKS(20));
+	vTaskDelete(NULL);
 }

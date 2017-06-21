@@ -13,16 +13,22 @@
 #include <FreeRTOS.h>
 #include <task.h>
 
-#define TELEMETRY_TYPE_DATA			1
-#define TELEMETRY_TYPE_NEW_DEVICE	2
+#define TYPE_TELEMETRY			1
+#define TYPE_NEW_DEVICE			2
+#define TYPE_GPIO_STATUS_GET 	3
 
-typedef struct telemetryData_s
+typedef struct mqttData_s
 {
 	uint8_t data[32];
 	uint8_t brokerPhyAddr[8];
 	uint8_t dataType;
 	uint8_t len;
-} TelemetryData;
+} MqttData;
+
+enum RpcMethodType
+{
+	NO_METHOD, GET_GPIO_STATUS, SET_GPIO_STATUS
+};
 
 extern QueueHandle_t xMqttQueue;
 

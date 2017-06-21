@@ -7,15 +7,23 @@
 #include <paho_mqtt_c/MQTTClient.h>
 #include "client.h"
 #include "parsers.h"
+#include "jsmn.h"
+#include "plc.h"
 
 static volatile char *tbToken[21];
 QueueHandle_t xMqttQueue;
 
 const char telemetryTopic[] = "v1/gateway/telemetry";
 const char newDeviceTopic[] = "v1/gateway/connect";
+const char rpcTopicPrefix[] = "v1/devices/me/rpc/";
+#define rpcTopicResponse "v1/devices/me/rpc/response/"
 
 static inline int registerMqttClientsFromList(mqtt_client_t *mqttClient, mqtt_message_t *mqttMessage);
 static void mqttRpcReceived(mqtt_message_data_t *md);
+static inline void getNumberOfRequestInStringForm(uint8_t *dst, uint8_t *dstLen, char *src, int srcLen);
+static inline enum RpcMethodType getRpcMethodType(mqtt_message_t *message);
+static inline int composeJsonFromRelayStateOnDevices(char *buf);
+inline struct RelayStateChanger *extractPinNumberAndStateFromJson(mqtt_message_t *message);
 
 void mqttTask(void *pvParameters)
 {
@@ -52,8 +60,6 @@ void mqttTask(void *pvParameters)
 			vTaskDelay(pdMS_TO_TICKS(2000));
 			continue;
 		}
-		else
-			printf("Successfully connected to MQTT server\n\r");
 
 		mqtt_client_new(&client, &network, 5000, mqttBuf, sizeof(mqttBuf), mqttReadBuf, sizeof(mqttReadBuf));
 		ret = mqtt_connect(&client, &data);
@@ -63,8 +69,6 @@ void mqttTask(void *pvParameters)
 			mqtt_network_disconnect(&network);
 			continue;
 		}
-		else
-			printf("MQTT CONNECT sent successfully\n\r");
 
 		ret = registerMqttClientsFromList(&client, &message);
 		if (ret != MQTT_SUCCESS)
@@ -73,36 +77,31 @@ void mqttTask(void *pvParameters)
 			mqtt_network_disconnect(&network);
 			continue;
 		}
-		else
-			printf("Succesfull device connect\n");
 
-		ret = mqtt_subscribe(&client, "v1/gateway/rpc", MQTT_QOS1, mqttRpcReceived);
+		ret = mqtt_subscribe(&client, "v1/devices/me/rpc/request/+", MQTT_QOS1, mqttRpcReceived);
 		if (ret != MQTT_SUCCESS)
 		{
 			printf("Error occured while subscribing: %d\n", ret);
 			mqtt_network_disconnect(&network);
 			continue;
 		}
-		else
-			printf("Succesfull subscription\n");
 
 		for (;;)
 		{
-			TelemetryData telemetryData;
-			xQueueReceive(xMqttQueue, &telemetryData, portMAX_DELAY);
+			MqttData mqttData;
+			xQueueReceive(xMqttQueue, &mqttData, portMAX_DELAY);
 
 			char buf[128] = "";
 			message.payload = buf;
-			if (telemetryData.dataType == TELEMETRY_TYPE_DATA)
+			if (mqttData.dataType == TYPE_TELEMETRY)
 			{
 				char deviceName[33];
-				getDeviceNameByPlcPhyAddr(deviceName, telemetryData.brokerPhyAddr);
-				uint8_t *data = telemetryData.data;
+				getDeviceNameByPlcPhyAddr(deviceName, mqttData.brokerPhyAddr);
+				uint8_t *data = mqttData.data;
 				bool restart = false;
-				for (int i = 0; i < telemetryData.len / 10; i++)
+				for (int i = 0; i < mqttData.len / 10; i++)
 				{
-					message.payloadlen = composeJsonFromTelemetryData(buf, deviceName, data);
-					printf("%s %d\n", (char *)message.payload, message.payloadlen);
+					message.payloadlen = composeJsonFromMqttData(buf, deviceName, data);
 					if (message.payloadlen > 0)
 					{
 						ret = mqtt_publish(&client, telemetryTopic, &message);
@@ -113,15 +112,13 @@ void mqttTask(void *pvParameters)
 							restart = true;
 							break;
 						}
-						else
-							printf("MQTT Publishing successful\n\r");
 					}
 					data += 10;
 				}
-				if(restart)
+				if (restart)
 					break;
 			}
-			else
+			else if (mqttData.dataType == TYPE_NEW_DEVICE)
 			{
 				message.payloadlen = composeJsonFromNewDevice(buf);
 				ret = mqtt_publish(&client, newDeviceTopic, &message);
@@ -131,8 +128,27 @@ void mqttTask(void *pvParameters)
 					mqtt_network_disconnect(&network);
 					break;
 				}
-				else
-					printf("MQTT Publishing successful\n\r");
+			}
+			else if (mqttData.dataType == TYPE_GPIO_STATUS_GET)
+			{
+				message.payloadlen = composeJsonFromRelayStateOnDevices(buf);
+				char topic[48] = rpcTopicResponse;
+				memcpy(topic + sizeof(rpcTopicResponse) - 1, mqttData.data, mqttData.len + 1);
+				ret = mqtt_publish(&client, topic, &message);
+				printf("Topic: %s payload: %.*s\n", topic, message.payloadlen, buf);
+				if (ret != MQTT_SUCCESS)
+				{
+					printf("Error -> get gpio status -> MQTT");
+					mqtt_network_disconnect(&network);
+					break;
+				}
+				ret = mqtt_publish(&client, "v1/devices/me/attributes", &message);
+				if (ret != MQTT_SUCCESS)
+				{
+					printf("Error -> get gpio status -> MQTT");
+					mqtt_network_disconnect(&network);
+					break;
+				}
 			}
 		}
 	}
@@ -169,15 +185,99 @@ static inline int registerMqttClientsFromList(mqtt_client_t *mqttClient, mqtt_me
 
 static void mqttRpcReceived(mqtt_message_data_t *md)
 {
-	int i;
 	mqtt_message_t *message = md->message;
-	printf("Received: ");
-	for (i = 0; i < md->topic->lenstring.len; ++i)
-		printf("%c", md->topic->lenstring.data[i]);
 
-	printf(" = ");
-	for (i = 0; i < (int)message->payloadlen; ++i)
-		printf("%c", ((char *)(message->payload))[i]);
+	printf("Got on topic: %.*s ", md->topic->lenstring.len, (char *)md->topic->lenstring.data);
+	printf("data: %.*s\n", message->payloadlen, (char *)message->payload);
 
-	printf("\r\n");
+	char *topicItr = md->topic->lenstring.data + sizeof(rpcTopicPrefix) - 1;
+	const char requestStr[] = "request";
+	if (!strncmp(topicItr, requestStr, sizeof(requestStr) - 1))
+	{
+		topicItr += sizeof(requestStr);
+		MqttData rpcData;
+		getNumberOfRequestInStringForm(rpcData.data, &rpcData.len, topicItr,
+									   md->topic->lenstring.len - (topicItr - md->topic->lenstring.data));
+		printf("Request: %s len %d\n", rpcData.data, rpcData.len);
+
+		enum RpcMethodType methodType = getRpcMethodType(message);
+		if (methodType == GET_GPIO_STATUS)
+		{
+			rpcData.dataType = TYPE_GPIO_STATUS_GET;
+			xQueueSend(xMqttQueue, &rpcData, 0);
+		}
+		else if (methodType == SET_GPIO_STATUS)
+		{
+			struct RelayStateChanger *r = extractPinNumberAndStateFromJson(message);
+			if (r)
+			{
+				r->requestNumber = atoi((char *)rpcData.data);
+				xTaskCreate(changeRelayStateTask, "Change GPIO", 256, (void *)r, 3, NULL);
+			} else
+				printf("JSON parsing fail in extract\n");
+		}
+		else
+			printf("JSON parsing failed\n");
+	}
+}
+
+static inline void getNumberOfRequestInStringForm(uint8_t *dst, uint8_t *dstLen, char *src, int srcLen)
+{
+	memcpy(dst, src, srcLen);
+	dst[srcLen] = '\0';
+	*dstLen = srcLen;
+}
+
+static inline enum RpcMethodType getRpcMethodType(mqtt_message_t *message)
+{
+	/*
+	jsmn_parser jsmnParser;
+	jsmntok_t t[4];
+	jsmn_init(&jsmnParser);
+	int r = jsmn_parse(&jsmnParser, message->payload, message->payloadlen, t, sizeof(t) / sizeof(t[0]));
+	if (r < 0)
+		return NO_METHOD;
+	*/
+	const char getGpioStatusMethodName[] = "getGpioStatus";
+	const char setGpioStatusMethodName[] = "setGpioStatus";
+
+	if (!strncmp(message->payload + 11, getGpioStatusMethodName, sizeof(getGpioStatusMethodName) - 1))
+		return GET_GPIO_STATUS;
+	else if (!strncmp(message->payload + 11, setGpioStatusMethodName, sizeof(setGpioStatusMethodName) - 1))
+		return SET_GPIO_STATUS;
+	else
+		return NO_METHOD;
+}
+
+static inline int composeJsonFromRelayStateOnDevices(char *buf)
+{
+	int i = 1, index = 1;
+	*buf = '{';
+	for (client_s *client = (client_s *)clientListBegin; client; client = client->next, i++)
+		index += sprintf(buf + index, "\"%d\":%s,", i, client->relayState ? "true" : "false");
+
+	*(buf + index - 1) = '}';
+	return index;
+}
+
+inline struct RelayStateChanger *extractPinNumberAndStateFromJson(mqtt_message_t *message)
+{
+	jsmn_parser jsmnParser;
+	jsmntok_t t[10];
+	jsmn_init(&jsmnParser);
+	int r = jsmn_parse(&jsmnParser, message->payload, message->payloadlen, t, sizeof(t) / sizeof(t[0]));
+	if (r < 0)
+		return NULL;
+
+	struct RelayStateChanger *relayStateChanger =
+		(struct RelayStateChanger *)pvPortMalloc(sizeof(struct RelayStateChanger));
+	
+	char deviceNumberInStringForm[4];
+	int deviceNumberInStringFormLen = t[6].end - t[6].start;
+	memcpy(deviceNumberInStringForm, message->payload + t[6].start, deviceNumberInStringFormLen);
+	deviceNumberInStringForm[deviceNumberInStringFormLen] = '\0';
+	relayStateChanger->deviceNumber = (uint8_t)atoi(deviceNumberInStringForm);
+
+	relayStateChanger->relayState = (!strncmp(message->payload + t[8].start, "true", sizeof("true") - 1 ? 1 : 0));
+	return relayStateChanger;
 }

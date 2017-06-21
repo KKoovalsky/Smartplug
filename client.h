@@ -10,6 +10,7 @@ typedef struct client {
 	struct client *next;
 	uint8_t plcPhyAddr[8];		// PLC Physical address is binary data.
 	char deviceName[32 + 1]; 	// Thingsboard token is an ascii type string so null termination is required
+	uint8_t relayState;
 } client_s;
 
 extern volatile client_s *clientListBegin;

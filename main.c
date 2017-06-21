@@ -25,32 +25,33 @@ const int gpio = 2;
  */
 void blinkTask(void *pvParameters)
 {
-    gpio_enable(gpio, GPIO_OUTPUT);
-    while (1)
-    {
-        gpio_write(gpio, 1);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-        gpio_write(gpio, 0);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
+	gpio_enable(gpio, GPIO_OUTPUT);
+
+	while (1)
+	{
+		gpio_write(gpio, 1);
+		vTaskDelay(1000 / portTICK_PERIOD_MS);
+		gpio_write(gpio, 0);
+		vTaskDelay(1000 / portTICK_PERIOD_MS);
+	}
 }
 
 void user_init(void)
 {
-    uart_set_baud(0, 74880);
-    printf("SDK version:%s\n", sdk_system_get_sdk_version());
+	uart_set_baud(0, 74880);
+	printf("SDK version:%s\n", sdk_system_get_sdk_version());
 
-    i2c_init(SCL_PIN, SDA_PIN);
+	i2c_init(SCL_PIN, SDA_PIN);
 
-    sdk_wifi_station_set_auto_connect(0);
+	sdk_wifi_station_set_auto_connect(0);
 
 	xPLCSendSemaphore = xSemaphoreCreateMutex();
 
 	initFileSystem();
 	initDeviceByMode();
 
-    xTaskCreate(blinkTask, "Blink", 256, NULL, 2, NULL);
+	xTaskCreate(blinkTask, "Blink", 256, NULL, 2, NULL);
 	xTaskCreate(initPlcTask, "PLC Init", 256, NULL, 3, NULL);
-    xTaskCreate(plcTaskRcv, "PLC Rcv", 256, NULL, 3, &xPLCTaskRcv);
+	xTaskCreate(plcTaskRcv, "PLC Rcv", 256, NULL, 3, &xPLCTaskRcv);
 	xTaskCreate(plcTaskSend, "PLC Send", 256, NULL, 3, &xPLCTaskSend);
 }
