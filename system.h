@@ -16,17 +16,17 @@
 #include "queue.h"
 #include "semphr.h"
 
-typedef enum
+enum ConfigMode
 {
     BROKER_CONF, CLIENT_CONF
-} ConfigMode_e;
+};
 
-typedef struct PermConfData
+struct ConfigData
 {
     char ssid[33], password[65], plcPhyAddr[17], tbToken[21], deviceName[33];
-	ConfigMode_e mode;
+	enum ConfigMode mode;
     uint8_t ssidLen, passwordLen, deviceNameLen;
-} ConfigData;
+};
 
 struct sdk_station_config;
 

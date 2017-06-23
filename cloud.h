@@ -17,13 +17,13 @@
 #define TYPE_NEW_DEVICE			2
 #define TYPE_GPIO_STATUS_GET 	3
 
-typedef struct mqttData_s
+struct MqttData
 {
 	uint8_t data[32];
 	uint8_t brokerPhyAddr[8];
 	uint8_t dataType;
 	uint8_t len;
-} MqttData;
+};
 
 enum RpcMethodType
 {

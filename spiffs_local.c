@@ -39,7 +39,7 @@ int initFileSystem()
 	return 0;
 }
 
-void saveConfigDataToFile(ConfigData *configData)
+void saveConfigDataToFile(struct ConfigData *configData)
 {
 	int fd = open("smartplug.conf", O_WRONLY, 0);
 	if (fd < 0)
@@ -127,7 +127,7 @@ void getCredentialsFromFile(char *ssid, char *wifiPassword, char *tbToken, char 
 		copyString(deviceName, p);
 }
 
-void saveClientDataToFile(client_s *newClient)
+void saveClientDataToFile(struct Client *newClient)
 {
 	char plcPhyAddrStr[17];
 	convertPlcPhyAddressToString(plcPhyAddrStr, newClient->plcPhyAddr);

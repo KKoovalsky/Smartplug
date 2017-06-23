@@ -31,8 +31,8 @@ volatile int devType;
 static void initCommonOpts();
 static void startBrokerMode();
 static void startClientMode();
-static inline void switchToBrokerMode(ConfigData *configData);
-static inline void switchToClientMode(ConfigData *configData);
+static inline void switchToBrokerMode(struct ConfigData *configData);
+static inline void switchToClientMode(struct ConfigData *configData);
 static void setStationAPMode();
 static void stationAndSntpStartup(void *pvParameters);
 static void setBrokerPlcPhyAddressTask(void *pvParameters);
@@ -54,7 +54,7 @@ void initDeviceByMode()
 	{
 		printf("First run of the device\n");
 		setStationAPMode();
-		xConfiguratorQueue = xQueueCreate(1, sizeof(ConfigData));
+		xConfiguratorQueue = xQueueCreate(1, sizeof(struct ConfigData));
 		xTaskCreate(httpd_task, "HTTP Daemon", 256, NULL, 2, &xHTTPServerTask);
 		xTaskCreate(configuratorTask, "configConnect", 1536, NULL, 4, &xConfiguratorTask);
 	}
@@ -64,7 +64,7 @@ void configuratorTask(void *pvParameters)
 {
 	for (;;)
 	{
-		ConfigData configData;
+		struct ConfigData configData;
 		xQueueReceive(xConfiguratorQueue, &configData, portMAX_DELAY);
 		if (configData.mode == BROKER_CONF)
 		{
@@ -105,7 +105,7 @@ void configuratorTask(void *pvParameters)
 	}
 }
 
-static inline void switchToBrokerMode(ConfigData *configData)
+static inline void switchToBrokerMode(struct ConfigData *configData)
 {
 	devType = BROKER;
 	uint8_t rawPlcPhyAddr[8];
@@ -119,11 +119,12 @@ static inline void switchToBrokerMode(ConfigData *configData)
 	sntpInit();
 	addClient(createClient(rawPlcPhyAddr, configData->deviceName, configData->deviceNameLen));
 	saveConfigDataToFile(configData);
-	xMqttQueue = xQueueCreate(8, sizeof(MqttData));
+	xMqttQueue = xQueueCreate(8, sizeof(struct MqttData));
 	xTaskCreate(mqttTask, "MQTT", 1536, NULL, 2, NULL);
+	xTaskCreate(getPowerTask, "PowerGet", 512, NULL, 2, NULL);
 }
 
-static inline void switchToClientMode(ConfigData *configData)
+static inline void switchToClientMode(struct ConfigData *configData)
 {
 	devType = CLIENT;
 	addClient(createClientFromString(configData->plcPhyAddr, configData->deviceName,
@@ -134,6 +135,7 @@ static inline void switchToClientMode(ConfigData *configData)
 	connectToStation(configData->ssid, configData->password, configData->ssidLen, configData->passwordLen);
 	sntpInit();
 	saveConfigDataToFile(configData);
+	xTaskCreate(getPowerTask, "PowerGet", 512, NULL, 2, NULL);
 }
 
 static void stationAndSntpStartup(void *pvParameters)
@@ -173,7 +175,7 @@ static void startBrokerMode()
 	devType = BROKER;
 	initCommonOpts();
 	retrieveClientListFromFile();
-	xMqttQueue = xQueueCreate(6, sizeof(MqttData));
+	xMqttQueue = xQueueCreate(6, sizeof(struct MqttData));
 	xTaskCreate(mqttTask, "MQTT", 1536, NULL, 2, NULL);
 	printf("Starting broker mode\n");
 }

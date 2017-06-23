@@ -24,7 +24,7 @@ static int getSSIPacket(uint8_t *buf, TickType_t *lastWakeTime);
 
 void getPowerTask(void *pvParameters)
 {
-	MqttData telemetryData;
+	struct MqttData telemetryData;
 	memcpy(telemetryData.brokerPhyAddr, (uint8_t *)clientListBegin->plcPhyAddr, 8);
 	telemetryData.dataType = TYPE_TELEMETRY;
 	const char commandGetPower[] = {0xA5, 0x07, 0x41, 0x00, 0x0A, 0x44, 0x3B};
@@ -64,7 +64,7 @@ void getPowerTask(void *pvParameters)
 				printf("Sending power samples\n\r");
 				telemetryData.len = index;
 				if (devType == CLIENT)
-					sendPLCData(telemetryData.data, NULL, NULL, NEW_TELEMETRY_DATA, index, 0);
+					sendPlcData(telemetryData.data, NULL, NULL, NEW_TELEMETRY_DATA, index, 0);
 				else
 					xQueueSend(xMqttQueue, &telemetryData, 0);
 				index = 0;

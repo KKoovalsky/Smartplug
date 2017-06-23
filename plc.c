@@ -25,7 +25,7 @@ TaskHandle_t xTaskNewClientRegis;
 static volatile TaskHandle_t xClientSideRegistrationHandle = NULL;
 SemaphoreHandle_t xPLCSendSemaphore;
 
-plcTxRecord_s plcTxBuf[PLC_TX_BUF_SIZE];
+struct PlcTxRecord plcTxBuf[PLC_TX_BUF_SIZE];
 int plcTxBufHead, plcTxBufTail;
 
 volatile uint8_t *newWifiSsid = NULL, *newWifiPassword = NULL;
@@ -288,7 +288,7 @@ void plcTaskRcv(void *pvParameters)
 			nackCnt--;
 			if (!nackCnt)
 			{
-				plcTxRecord_s *txRec = &plcTxBuf[plcTxBufTail];
+				struct PlcTxRecord *txRec = &plcTxBuf[plcTxBufTail];
 				if (txRec->taskToNotify)
 					xTaskNotify(txRec->taskToNotify, PLC_ERR_NO_ACK, eSetValueWithoutOverwrite);
 
@@ -304,7 +304,7 @@ void plcTaskRcv(void *pvParameters)
 			noRespCnt--;
 			if (!noRespCnt)
 			{
-				plcTxRecord_s *txRec = &plcTxBuf[plcTxBufTail];
+				struct PlcTxRecord *txRec = &plcTxBuf[plcTxBufTail];
 				if (txRec->taskToNotify)
 					xTaskNotify(txRec->taskToNotify, PLC_ERR_NO_RESP, eSetValueWithoutOverwrite);
 
@@ -316,7 +316,7 @@ void plcTaskRcv(void *pvParameters)
 		}
 		case STATUS_TX_DATA_SENT:
 		{
-			plcTxRecord_s *txRec = &plcTxBuf[plcTxBufTail];
+			struct PlcTxRecord *txRec = &plcTxBuf[plcTxBufTail];
 			if (txRec->taskToNotify)
 				xTaskNotify(txRec->taskToNotify, PLC_ERR_OK, eSetValueWithoutOverwrite);
 
@@ -337,7 +337,7 @@ static inline void handleReceivedDataBasingOnCommandReceived()
 {
 	unsigned int cmdReg = readPLCregister(RX_COMMAND_ID_REG);
 	printf("PLC: New RX data available.\n\r");
-	PlcErr_e result = PLC_ERR_IDLE;
+	enum PlcErr result = PLC_ERR_IDLE;
 	switch (cmdReg)
 	{
 	case REGISTER_NEW_DEV:
@@ -362,7 +362,7 @@ static inline void handleReceivedDataBasingOnCommandReceived()
 		break;
 	case NEW_TELEMETRY_DATA:
 	{
-		MqttData td;
+		struct MqttData td;
 		getPLCrxSA(td.brokerPhyAddr);
 		readPLCrxPacket(NULL, td.data, &td.len);
 		xQueueSend(xMqttQueue, &td, 0);
@@ -393,7 +393,7 @@ void plcTaskSend(void *pvParameters)
 		{
 			if (xSemaphoreTake(xPLCSendSemaphore, 0))
 			{
-				plcTxRecord_s *txRec = &plcTxBuf[plcTxBufTail];
+				struct PlcTxRecord *txRec = &plcTxBuf[plcTxBufTail];
 
 				printf("Sending PLC data \"%.*s\" of len %d with command 0x%X\n\r",
 					   txRec->len, txRec->data, txRec->len, txRec->command);
@@ -412,15 +412,14 @@ void plcTaskSend(void *pvParameters)
 	}
 }
 
-// TODO: byte type signedness standarization
 // TODO: split into different files client side and broker side functions.
-PlcErr_e registerClient(ConfigData *configData)
+enum PlcErr registerClient(struct ConfigData *configData)
 {
 	uint8_t rawPlcPhyAddr[8];
 	convertPlcPhyAddressToRaw(rawPlcPhyAddr, configData->plcPhyAddr);
 
 	TaskHandle_t currentTask = xTaskGetCurrentTaskHandle();
-	PlcErr_e result = sendPLCData((uint8_t *)configData->deviceName, rawPlcPhyAddr, currentTask,
+	enum PlcErr result = sendPlcData((uint8_t *)configData->deviceName, rawPlcPhyAddr, currentTask,
 								  REGISTER_NEW_DEV, (uint8_t)configData->deviceNameLen, 1);
 
 	if (result >= 0)
@@ -452,7 +451,7 @@ PlcErr_e registerClient(ConfigData *configData)
 					configData->tbToken[20] = '\0';
 
 					if (packetLen == 20)
-						result = sendPLCData(NULL, NULL, NULL, REGISTRATION_SUCCESS, 0, 0);
+						result = sendPlcData(NULL, NULL, NULL, REGISTRATION_SUCCESS, 0, 0);
 				}
 				else
 					result = PLC_ERR_NOT_WIFI_CREDS;
@@ -471,26 +470,26 @@ PlcErr_e registerClient(ConfigData *configData)
 void registerNewClientTask(void *pvParameters)
 {
 	uint8_t packetLen, command;
-	client_s *newClient = (client_s *)pvPortMalloc(sizeof(client_s));
+	struct Client *newClient = (struct Client *)pvPortMalloc(sizeof(struct Client));
 	readPLCrxPacket(&command, (uint8_t *)newClient->deviceName, &packetLen);
 	newClient->deviceName[packetLen] = '\0';
 	getPLCrxSA(newClient->plcPhyAddr);
 
 	// TODO: Send reason of registration failure.
-	PlcErr_e result = PLC_ERR_OK;
+	enum PlcErr result = PLC_ERR_OK;
 
 	struct sdk_station_config config;
 	sdk_wifi_station_get_config(&config);
 	int ssidLen = strlen((char *)config.ssid);
 	int passwordLen = strlen((char *)config.password);
 
-	result = sendPLCData(config.ssid, newClient->plcPhyAddr, xTaskNewClientRegis, NEW_WIFI_SSID, ssidLen, 1);
+	result = sendPlcData(config.ssid, newClient->plcPhyAddr, xTaskNewClientRegis, NEW_WIFI_SSID, ssidLen, 1);
 	if (result >= 0)
 	{
-		result = sendPLCData(config.password, NULL, xTaskNewClientRegis, NEW_WIFI_PASSWORD, passwordLen, 0);
+		result = sendPlcData(config.password, NULL, xTaskNewClientRegis, NEW_WIFI_PASSWORD, passwordLen, 0);
 		if (result >= 0)
 		{
-			result = sendPLCData((uint8_t *)getTbToken(), NULL, xTaskNewClientRegis, NEW_TB_TOKEN, 20, 0);
+			result = sendPlcData((uint8_t *)getTbToken(), NULL, xTaskNewClientRegis, NEW_TB_TOKEN, 20, 0);
 			if (result >= 0)
 			{
 				if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(4000)) != pdTRUE)
@@ -501,7 +500,7 @@ void registerNewClientTask(void *pvParameters)
 					addClient(newClient);
 					saveClientDataToFile(newClient);
 
-					MqttData td;
+					struct MqttData td;
 					td.dataType = TYPE_NEW_DEVICE;
 					xQueueSend(xMqttQueue, &td, 0);
 				}
@@ -512,17 +511,17 @@ void registerNewClientTask(void *pvParameters)
 	if (result < 0)
 	{
 		vPortFree(newClient);
-		sendPLCData(NULL, NULL, NULL, REGISTRATION_FAILED, 0, 0);
+		sendPlcData(NULL, NULL, NULL, REGISTRATION_FAILED, 0, 0);
 		printf("Registation unsuccessful: %d\n", result);
 	}
 
 	vTaskDelete(NULL);
 }
 
-PlcErr_e sendPLCData(uint8_t *data, uint8_t *phyAddr, TaskHandle_t taskToNotify,
+enum PlcErr sendPlcData(uint8_t *data, uint8_t *phyAddr, TaskHandle_t taskToNotify,
 					 uint8_t command, uint8_t len, uint8_t isPhyAddrNew)
 {
-	plcTxRecord_s *txRec = &plcTxBuf[plcTxBufHead];
+	struct PlcTxRecord *txRec = &plcTxBuf[plcTxBufHead];
 	txRec->len = len;
 	txRec->command = command;
 	txRec->taskToNotify = taskToNotify;
@@ -539,7 +538,7 @@ PlcErr_e sendPLCData(uint8_t *data, uint8_t *phyAddr, TaskHandle_t taskToNotify,
 	plcTxBufHead = (plcTxBufHead + 1) & PLC_TX_BUF_MASK;
 	xTaskNotifyGive(xPLCTaskSend);
 
-	PlcErr_e result = PLC_ERR_OK;
+	enum PlcErr result = PLC_ERR_OK;
 	if (taskToNotify)
 	{
 		if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(3000)) != pdTRUE)
@@ -558,7 +557,7 @@ void changeRelayStateTask(void *pvParameters)
 
 	if (relayStateChanger->deviceNumber != 1)
 	{
-		client_s *client = (client_s *)clientListBegin;
+		struct Client *client = (struct Client *)clientListBegin;
 		int i = 1;
 		while (client && i != relayStateChanger->deviceNumber)
 		{
@@ -569,7 +568,7 @@ void changeRelayStateTask(void *pvParameters)
 		if (!client)
 			vTaskDelete(NULL);
 
-		PlcErr_e res = sendPLCData(&relayStateChanger->relayState, client->plcPhyAddr, xTaskGetCurrentTaskHandle(),
+		enum PlcErr res = sendPlcData(&relayStateChanger->relayState, client->plcPhyAddr, xTaskGetCurrentTaskHandle(),
 								   CHANGE_RELAY_STATE, 1, 1);
 
 		if (res == PLC_ERR_OK)
@@ -581,7 +580,7 @@ void changeRelayStateTask(void *pvParameters)
 		clientListBegin->relayState = relayStateChanger->relayState;
 	}
 
-	MqttData rpcResponse;
+	struct MqttData rpcResponse;
 	rpcResponse.len = sprintf((char *) rpcResponse.data, "%d", relayStateChanger->requestNumber);
 	rpcResponse.dataType = TYPE_GPIO_STATUS_GET;
 	xQueueSend(xMqttQueue, &rpcResponse, pdMS_TO_TICKS(20));

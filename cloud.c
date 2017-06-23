@@ -88,7 +88,7 @@ void mqttTask(void *pvParameters)
 
 		for (;;)
 		{
-			MqttData mqttData;
+			struct MqttData mqttData;
 			xQueueReceive(xMqttQueue, &mqttData, portMAX_DELAY);
 
 			char buf[128] = "";
@@ -170,7 +170,7 @@ static inline int registerMqttClientsFromList(mqtt_client_t *mqttClient, mqtt_me
 	char buf[52] = "{\"device\":\"";
 	int ret = MQTT_FAILURE;
 	const int firstTxtLen = strlen(buf);
-	for (client_s *client = (client_s *)clientListBegin; client; client = client->next)
+	for (struct Client *client = (struct Client *)clientListBegin; client; client = client->next)
 	{
 		mqttMessage->payloadlen = sprintf(buf + firstTxtLen, "%s\"}", client->deviceName) + firstTxtLen;
 		mqttMessage->payload = buf;
@@ -195,7 +195,7 @@ static void mqttRpcReceived(mqtt_message_data_t *md)
 	if (!strncmp(topicItr, requestStr, sizeof(requestStr) - 1))
 	{
 		topicItr += sizeof(requestStr);
-		MqttData rpcData;
+		struct MqttData rpcData;
 		getNumberOfRequestInStringForm(rpcData.data, &rpcData.len, topicItr,
 									   md->topic->lenstring.len - (topicItr - md->topic->lenstring.data));
 		printf("Request: %s len %d\n", rpcData.data, rpcData.len);
@@ -253,7 +253,7 @@ static inline int composeJsonFromRelayStateOnDevices(char *buf)
 {
 	int i = 1, index = 1;
 	*buf = '{';
-	for (client_s *client = (client_s *)clientListBegin; client; client = client->next, i++)
+	for (struct Client *client = (struct Client *)clientListBegin; client; client = client->next, i++)
 		index += sprintf(buf + index, "\"%d\":%s,", i, client->relayState ? "true" : "false");
 
 	*(buf + index - 1) = '}';

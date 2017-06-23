@@ -13,16 +13,16 @@
 #include "plc.h"
 #include "spiffs_local.h"
 
-typedef enum {
+enum WebsocketClbkUse{
 	NONE,
 	SET_CONFIG,
 	PLC_FUNCTION
-} WebsocketClbkUse_e;
+};
 
 TaskHandle_t xHTTPServerTask;
 static TaskHandle_t xWSGetAckTaskHandle = NULL;
 
-volatile WebsocketClbkUse_e websocketClbkUse = NONE;
+volatile enum WebsocketClbkUse websocketClbkUse = NONE;
 volatile struct tcp_pcb *wsPCB;
 
 const uint8_t wifiConnectionFailedJson[] = "{\"data\":\"enableButtons\",\"msg\":\"Could not connect.\"}";
@@ -75,7 +75,7 @@ void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
 	}
 
 	char *configStr = data + t[1].start;
-	int configStrLen = t[1].size;
+	int configStrLen = t[1].end - t[1].start;
 
 	printf("%.*s\n", configStrLen, configStr);
 
@@ -87,15 +87,15 @@ void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
 
 static inline void sendBrokerConfigDataToConfiguratorTask(char *data, jsmntok_t *t)
 {
-	ConfigData configData;
+	struct ConfigData configData;
 
 	char *ssid = data + t[2].start;
-	int ssidStrLen = t[2].size;
+	int ssidStrLen = t[2].end - t[2].start;
 	char *password = data + t[4].start;
-	int passwordLen = t[4].size;
+	int passwordLen = t[4].end - t[4].start;
 	char *tbToken = data + t[6].start;
 	char *deviceName = data + t[8].start;
-	int deviceNameLen = t[8].size;
+	int deviceNameLen = t[8].end - t[8].start;
 
 	memcpy(configData.ssid, ssid, ssidStrLen);
 	memcpy(configData.password, password, passwordLen);
@@ -117,11 +117,11 @@ static inline void sendBrokerConfigDataToConfiguratorTask(char *data, jsmntok_t 
 
 static inline void sendClientConfigDataToConfiguratorTask(char *data, jsmntok_t *t)
 {
-	ConfigData configData;
+	struct ConfigData configData;
 
 	char *phyAddr = data + t[2].start;
 	char *deviceName = data + t[4].start;
-	int deviceNameLen = t[4].size;
+	int deviceNameLen = t[4].end - t[4].start;
 
 	memcpy(configData.plcPhyAddr, phyAddr, 16);
 	memcpy(configData.deviceName, deviceName, deviceNameLen);

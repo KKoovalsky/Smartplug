@@ -142,7 +142,7 @@
 
 #include <stdint.h>
 
-typedef enum {
+enum CustomPlcCommands {
 	REGISTER_NEW_DEV = 0x30,
 	REGISTRATION_FAILED,
 	REGISTRATION_SUCCESS,
@@ -151,9 +151,9 @@ typedef enum {
 	NEW_TB_TOKEN,
 	NEW_TELEMETRY_DATA,
 	CHANGE_RELAY_STATE
-} CUSTOM_COMMANDS;
+};
 
-typedef enum 
+enum PlcErr
 {
 	PLC_ERR_OK = 0,
 	PLC_ERR_TIMEOUT = -1,
@@ -165,7 +165,7 @@ typedef enum
 	PLC_ERR_NEW_SSID = 1,
 	PLC_ERR_NEW_PASSWORD = 2,
 	PLC_ERR_NEW_TB_TOKEN = 3
-} PlcErr_e;
+};
 
 struct RelayStateChanger
 {
@@ -192,7 +192,7 @@ struct RelayStateChanger
 
 typedef long time_t;
 
-typedef enum {
+enum PlcCommandIds {
 	SET_REMOTE_TX_ENABLE = 1,
 	SET_REMOTE_RESET,
 	SET_REMOTE_EXTENDED_ADDR,
@@ -208,9 +208,9 @@ typedef enum {
 	SET_REMOTE_THRESHOLD_VALUE,
 	SET_REMOTE_GROUP_MEMBERSHIP,
 	GET_REMOTE_GROUP_MEMBERSHIP
-} PLC_COMMAND_IDS_E;
+};
 
-typedef struct plcTxRecord
+struct PlcTxRecord
 {
 	uint8_t data[32];
 	uint8_t phyAddr[8];
@@ -218,9 +218,9 @@ typedef struct plcTxRecord
 	uint8_t command;
 	uint8_t len;
 	uint8_t isPhyAddrNew;
-} plcTxRecord_s;
+};
 
-extern plcTxRecord_s plcTxBuf[PLC_TX_BUF_SIZE];
+extern struct PlcTxRecord plcTxBuf[PLC_TX_BUF_SIZE];
 extern int plcTxBufHead, plcTxBufTail;
 
 extern TaskHandle_t xPLCTaskRcv;
@@ -252,10 +252,10 @@ void plcTaskSend(void *pvParameters);
 void registerNewClientTask(void *pvParameters);
 void changeRelayStateTask(void *pvParameters);
 
-PlcErr_e sendPLCData(uint8_t *data,	uint8_t *phyAddr, TaskHandle_t taskToNotify, 
+enum PlcErr sendPlcData(uint8_t *data,	uint8_t *phyAddr, TaskHandle_t taskToNotify, 
 	uint8_t command, uint8_t len, uint8_t isPhyAddrNew);
 
-PlcErr_e registerClient(ConfigData *configData);
+enum PlcErr registerClient(struct ConfigData *configData);
 void sendMeasurementDataToBrokerOverPLC(time_t ts, uint32_t *data, uint8_t len);	
 void initPlcWithDelay();
 

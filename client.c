@@ -5,12 +5,12 @@
 #include "parsers.h"
 
 // TODO: Parse PLC Phy address to two integers composing a key
-volatile client_s *clientListBegin = NULL;
-volatile client_s *clientListEnd = NULL;
+volatile struct Client *clientListBegin = NULL;
+volatile struct Client *clientListEnd = NULL;
 
-client_s *createClient(uint8_t *plcPhyAddr, char *deviceName, int deviceNameLen)
+struct Client *createClient(uint8_t *plcPhyAddr, char *deviceName, int deviceNameLen)
 {
-	client_s *newClient = (client_s *)pvPortMalloc(sizeof(client_s));
+	struct Client *newClient = (struct Client *)pvPortMalloc(sizeof(struct Client));
 	memcpy(newClient->plcPhyAddr, plcPhyAddr, 8);
 	memcpy(newClient->deviceName, deviceName, deviceNameLen);
 	newClient->deviceName[deviceNameLen] = '\0';
@@ -19,14 +19,14 @@ client_s *createClient(uint8_t *plcPhyAddr, char *deviceName, int deviceNameLen)
 	return newClient;
 }
 
-client_s *createClientFromString(char *plcPhyAddr, char *deviceName, int deviceNameLen)
+struct Client *createClientFromString(char *plcPhyAddr, char *deviceName, int deviceNameLen)
 {
 	uint8_t rawPlcPhyAddr[8];
 	convertPlcPhyAddressToRaw(rawPlcPhyAddr, plcPhyAddr);
 	return createClient(rawPlcPhyAddr, deviceName, deviceNameLen);
 }
 
-void addClient(client_s *client)
+void addClient(struct Client *client)
 {
 	if (clientListBegin == NULL)
 	{
@@ -40,7 +40,7 @@ void addClient(client_s *client)
 
 void getDeviceNameByPlcPhyAddr(char *destDeviceName, uint8_t *srcPlcPhyAddr)
 {
-	client_s *client = (client_s *) clientListBegin;
+	struct Client *client = (struct Client *) clientListBegin;
 	while(client)
 	{
 		int i;
