@@ -217,7 +217,6 @@ struct PlcTxRecord
 	TaskHandle_t taskToNotify;
 	uint8_t command;
 	uint8_t len;
-	uint8_t isPhyAddrNew;
 };
 
 extern struct PlcTxRecord plcTxBuf[PLC_TX_BUF_SIZE];
@@ -253,7 +252,7 @@ void registerNewClientTask(void *pvParameters);
 void changeRelayStateTask(void *pvParameters);
 
 enum PlcErr sendPlcData(uint8_t *data,	uint8_t *phyAddr, TaskHandle_t taskToNotify, 
-	uint8_t command, uint8_t len, uint8_t isPhyAddrNew);
+	uint8_t command, uint8_t len);
 
 enum PlcErr registerClient(struct ConfigData *configData);
 void sendMeasurementDataToBrokerOverPLC(time_t ts, uint32_t *data, uint8_t len);	

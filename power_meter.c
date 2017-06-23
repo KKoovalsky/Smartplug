@@ -64,7 +64,7 @@ void getPowerTask(void *pvParameters)
 				printf("Sending power samples\n\r");
 				telemetryData.len = index;
 				if (devType == CLIENT)
-					sendPlcData(telemetryData.data, NULL, NULL, NEW_TELEMETRY_DATA, index, 0);
+					sendPlcData(telemetryData.data, NULL, NULL, NEW_TELEMETRY_DATA, index);
 				else
 					xQueueSend(xMqttQueue, &telemetryData, 0);
 				index = 0;

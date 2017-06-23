@@ -401,7 +401,7 @@ void plcTaskSend(void *pvParameters)
 				if (txRec->len)
 					fillPLCTxData(txRec->data, txRec->len);
 
-				if (txRec->isPhyAddrNew)
+				if (txRec->phyAddr[0])
 					setPLCtxDA(TX_DA_TYPE_PHYSICAL, txRec->phyAddr);
 
 				writePLCregister(TX_COMMAND_ID_REG, txRec->command);
@@ -420,7 +420,7 @@ enum PlcErr registerClient(struct ConfigData *configData)
 
 	TaskHandle_t currentTask = xTaskGetCurrentTaskHandle();
 	enum PlcErr result = sendPlcData((uint8_t *)configData->deviceName, rawPlcPhyAddr, currentTask,
-								  REGISTER_NEW_DEV, (uint8_t)configData->deviceNameLen, 1);
+								  REGISTER_NEW_DEV, (uint8_t)configData->deviceNameLen);
 
 	if (result >= 0)
 	{
@@ -451,7 +451,7 @@ enum PlcErr registerClient(struct ConfigData *configData)
 					configData->tbToken[20] = '\0';
 
 					if (packetLen == 20)
-						result = sendPlcData(NULL, NULL, NULL, REGISTRATION_SUCCESS, 0, 0);
+						result = sendPlcData(NULL, NULL, NULL, REGISTRATION_SUCCESS, 0);
 				}
 				else
 					result = PLC_ERR_NOT_WIFI_CREDS;
@@ -483,13 +483,13 @@ void registerNewClientTask(void *pvParameters)
 	int ssidLen = strlen((char *)config.ssid);
 	int passwordLen = strlen((char *)config.password);
 
-	result = sendPlcData(config.ssid, newClient->plcPhyAddr, xTaskNewClientRegis, NEW_WIFI_SSID, ssidLen, 1);
+	result = sendPlcData(config.ssid, newClient->plcPhyAddr, xTaskNewClientRegis, NEW_WIFI_SSID, ssidLen);
 	if (result >= 0)
 	{
-		result = sendPlcData(config.password, NULL, xTaskNewClientRegis, NEW_WIFI_PASSWORD, passwordLen, 0);
+		result = sendPlcData(config.password, NULL, xTaskNewClientRegis, NEW_WIFI_PASSWORD, passwordLen);
 		if (result >= 0)
 		{
-			result = sendPlcData((uint8_t *)getTbToken(), NULL, xTaskNewClientRegis, NEW_TB_TOKEN, 20, 0);
+			result = sendPlcData((uint8_t *)getTbToken(), NULL, xTaskNewClientRegis, NEW_TB_TOKEN, 20);
 			if (result >= 0)
 			{
 				if (xTaskNotifyWait(0, 0xFFFFFFFF, (uint32_t *)&result, pdMS_TO_TICKS(4000)) != pdTRUE)
@@ -511,7 +511,7 @@ void registerNewClientTask(void *pvParameters)
 	if (result < 0)
 	{
 		vPortFree(newClient);
-		sendPlcData(NULL, NULL, NULL, REGISTRATION_FAILED, 0, 0);
+		sendPlcData(NULL, NULL, NULL, REGISTRATION_FAILED, 0);
 		printf("Registation unsuccessful: %d\n", result);
 	}
 
@@ -519,18 +519,17 @@ void registerNewClientTask(void *pvParameters)
 }
 
 enum PlcErr sendPlcData(uint8_t *data, uint8_t *phyAddr, TaskHandle_t taskToNotify,
-					 uint8_t command, uint8_t len, uint8_t isPhyAddrNew)
+					 uint8_t command, uint8_t len)
 {
 	struct PlcTxRecord *txRec = &plcTxBuf[plcTxBufHead];
 	txRec->len = len;
 	txRec->command = command;
 	txRec->taskToNotify = taskToNotify;
 
-	if (isPhyAddrNew)
-	{
-		txRec->isPhyAddrNew = 1;
+	if (phyAddr)
 		memcpy(txRec->phyAddr, phyAddr, 8);
-	}
+	else
+		txRec->phyAddr[0] = 0;
 
 	if (len)
 		memcpy(txRec->data, data, len);
@@ -569,7 +568,7 @@ void changeRelayStateTask(void *pvParameters)
 			vTaskDelete(NULL);
 
 		enum PlcErr res = sendPlcData(&relayStateChanger->relayState, client->plcPhyAddr, xTaskGetCurrentTaskHandle(),
-								   CHANGE_RELAY_STATE, 1, 1);
+								   CHANGE_RELAY_STATE, 1);
 
 		if (res == PLC_ERR_OK)
 			client->relayState = relayStateChanger->relayState;
