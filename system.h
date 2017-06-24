@@ -7,7 +7,7 @@
 #define MAX_RETRIES 10
 
 #define CLIENT 1
-#define BROKER 2
+#define GATEWAY 2
 
 #define MAX_WAITTIME_FOR_DISCONNECT_WHEN_CHANGING_STATION 20
 
@@ -18,7 +18,7 @@
 
 enum ConfigMode
 {
-    BROKER_CONF, CLIENT_CONF
+    GATEWAY_CONF, CLIENT_CONF
 };
 
 struct ConfigData

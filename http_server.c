@@ -59,7 +59,7 @@ const uint8_t plcJsonRegisUnsuccessStr[] =
 const uint8_t plcJsonRegisSuccessStrLen = sizeof(plcJsonRegisSuccessStr) - 1;
 const uint8_t plcJsonRegisUnsuccessStrLen = sizeof(plcJsonRegisUnsuccessStr) - 1;
 
-static inline void sendBrokerConfigDataToConfiguratorTask(char *data, jsmntok_t *t);
+static inline void sendGatewayConfigDataToConfiguratorTask(char *data, jsmntok_t *t);
 static inline void sendClientConfigDataToConfiguratorTask(char *data, jsmntok_t *t);
 
 void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
@@ -80,12 +80,12 @@ void setConfig(char *data, u16_t len, struct tcp_pcb *pcb)
 	printf("%.*s\n", configStrLen, configStr);
 
 	if (!strncmp(configStr, "ssid", configStrLen))
-		sendBrokerConfigDataToConfiguratorTask(data, t);
+		sendGatewayConfigDataToConfiguratorTask(data, t);
 	else if (!strncmp(configStr, "phyaddr", configStrLen))
 		sendClientConfigDataToConfiguratorTask(data, t);
 }
 
-static inline void sendBrokerConfigDataToConfiguratorTask(char *data, jsmntok_t *t)
+static inline void sendGatewayConfigDataToConfiguratorTask(char *data, jsmntok_t *t)
 {
 	struct ConfigData configData;
 
@@ -109,7 +109,7 @@ static inline void sendBrokerConfigDataToConfiguratorTask(char *data, jsmntok_t 
 	configData.passwordLen = (uint8_t)passwordLen;
 	configData.deviceNameLen = (uint8_t)deviceNameLen;
 
-	configData.mode = BROKER_CONF;
+	configData.mode = GATEWAY_CONF;
 
 	// Let other task handle this data (this handler should be left asap - it is said by http server documentation)
 	xQueueSend(xConfiguratorQueue, &configData, 0);

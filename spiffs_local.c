@@ -18,7 +18,7 @@
 #include "parsers.h"
 
 const char clientStr[] = "CLIENT";
-const char brokerStr[] = "BROKER";
+const char gatewayStr[] = "GATEWAY";
 
 /* TODO:    1. Use O_RDWR in place of O_WRONLY (problems occured when using o_RDWR)
             2. Delete rubbish at the end of file, 
@@ -50,8 +50,8 @@ void saveConfigDataToFile(struct ConfigData *configData)
 
 	lseek(fd, 0, SEEK_SET);
 
-	if (configData->mode == BROKER_CONF)
-		write(fd, brokerStr, sizeof(brokerStr) - 1);
+	if (configData->mode == GATEWAY_CONF)
+		write(fd, gatewayStr, sizeof(gatewayStr) - 1);
 	else
 		write(fd, clientStr, sizeof(clientStr) - 1);
 

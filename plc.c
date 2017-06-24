@@ -341,7 +341,7 @@ static inline void handleReceivedDataBasingOnCommandReceived()
 	switch (cmdReg)
 	{
 	case REGISTER_NEW_DEV:
-		if (devType == BROKER)
+		if (devType == GATEWAY)
 			xTaskCreate(registerNewClientTask, "Regis", 256, NULL, 4, &xTaskNewClientRegis);
 		break;
 	case REGISTRATION_SUCCESS:
@@ -363,7 +363,7 @@ static inline void handleReceivedDataBasingOnCommandReceived()
 	case NEW_TELEMETRY_DATA:
 	{
 		struct MqttData td;
-		getPLCrxSA(td.brokerPhyAddr);
+		getPLCrxSA(td.gatewayPhyAddr);
 		readPLCrxPacket(NULL, td.data, &td.len);
 		xQueueSend(xMqttQueue, &td, 0);
 		break;
@@ -412,7 +412,7 @@ void plcTaskSend(void *pvParameters)
 	}
 }
 
-// TODO: split into different files client side and broker side functions.
+// TODO: split into different files client side and gateway side functions.
 enum PlcErr registerClient(struct ConfigData *configData)
 {
 	uint8_t rawPlcPhyAddr[8];

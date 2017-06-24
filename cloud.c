@@ -96,7 +96,7 @@ void mqttTask(void *pvParameters)
 			if (mqttData.dataType == TYPE_TELEMETRY)
 			{
 				char deviceName[33];
-				getDeviceNameByPlcPhyAddr(deviceName, mqttData.brokerPhyAddr);
+				getDeviceNameByPlcPhyAddr(deviceName, mqttData.gatewayPhyAddr);
 				uint8_t *data = mqttData.data;
 				bool restart = false;
 				for (int i = 0; i < mqttData.len / 10; i++)

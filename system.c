@@ -29,13 +29,13 @@ volatile int devType;
 // TODO: Clean up function placement.
 
 static void initCommonOpts();
-static void startBrokerMode();
+static void startGatewayMode();
 static void startClientMode();
-static inline void switchToBrokerMode(struct ConfigData *configData);
+static inline void switchToGatewayMode(struct ConfigData *configData);
 static inline void switchToClientMode(struct ConfigData *configData);
 static void setStationAPMode();
 static void stationAndSntpStartup(void *pvParameters);
-static void setBrokerPlcPhyAddressTask(void *pvParameters);
+static void setGatewayPlcPhyAddressTask(void *pvParameters);
 static void connectToStation(char *ssid, char *password, int ssidLen, int passwordLen);
 static inline void fillJsonConnectionSuccessStringWithPlcPhyAddr(char *plcPhyAddrStr);
 
@@ -45,11 +45,11 @@ void initDeviceByMode()
 	char buffer[8];
 	getDeviceModeFromFile(buffer);
 
-	// Check if device is already configured as client or broker, otherwise start HTTP server to get configuration.
+	// Check if device is already configured as client or gateway, otherwise start HTTP server to get configuration.
 	if (!strncmp(buffer, clientStr, sizeof(clientStr) - 1))
 		startClientMode();
-	else if (!strncmp(buffer, brokerStr, sizeof(brokerStr) - 1))
-		startBrokerMode();
+	else if (!strncmp(buffer, gatewayStr, sizeof(gatewayStr) - 1))
+		startGatewayMode();
 	else // If its first run of this device, then start HTTP server to get configuration
 	{
 		printf("First run of the device\n");
@@ -66,7 +66,7 @@ void configuratorTask(void *pvParameters)
 	{
 		struct ConfigData configData;
 		xQueueReceive(xConfiguratorQueue, &configData, portMAX_DELAY);
-		if (configData.mode == BROKER_CONF)
+		if (configData.mode == GATEWAY_CONF)
 		{
 			connectToStation(configData.ssid, configData.password, configData.ssidLen, configData.passwordLen);
 			int retries = MAX_RETRIES;
@@ -82,7 +82,7 @@ void configuratorTask(void *pvParameters)
 
 			if (status == STATION_GOT_IP)
 			{
-				switchToBrokerMode(&configData);
+				switchToGatewayMode(&configData);
 				vQueueDelete(xConfiguratorQueue);
 				vTaskDelete(xHTTPServerTask);
 				vTaskDelete(NULL);
@@ -105,9 +105,9 @@ void configuratorTask(void *pvParameters)
 	}
 }
 
-static inline void switchToBrokerMode(struct ConfigData *configData)
+static inline void switchToGatewayMode(struct ConfigData *configData)
 {
-	devType = BROKER;
+	devType = GATEWAY;
 	uint8_t rawPlcPhyAddr[8];
 	setPlcPhyAddrFromPLCChip(rawPlcPhyAddr);
 	convertPlcPhyAddressToString(configData->plcPhyAddr, rawPlcPhyAddr);
@@ -150,7 +150,7 @@ static void stationAndSntpStartup(void *pvParameters)
 	vTaskDelete(NULL);
 }
 
-static void setBrokerPlcPhyAddressTask(void *pvParameters)
+static void setGatewayPlcPhyAddressTask(void *pvParameters)
 {
 	vTaskDelay(pdMS_TO_TICKS(2000));
 	setPLCtxDA(TX_DA_TYPE_PHYSICAL, (uint8_t *)clientListBegin->plcPhyAddr);
@@ -163,28 +163,28 @@ static void initCommonOpts()
 	xTaskCreate(stationAndSntpStartup, "StartUp", 512, NULL, 4, NULL);
 	xTaskCreate(getPowerTask, "PowerGet", 512, NULL, 2, NULL);
 	
-	char brokerDeviceName[33], brokerPlcPhyAddr[17], brokerTbToken[21];
-	getCredentialsFromFile(NULL, NULL, brokerTbToken, brokerPlcPhyAddr, brokerDeviceName);
+	char gatewayDeviceName[33], gatewayPlcPhyAddr[17], gatewayTbToken[21];
+	getCredentialsFromFile(NULL, NULL, gatewayTbToken, gatewayPlcPhyAddr, gatewayDeviceName);
 	
-	addClient(createClientFromString(brokerPlcPhyAddr, brokerDeviceName, strlen(brokerDeviceName)));
-	setTbToken(brokerTbToken);
+	addClient(createClientFromString(gatewayPlcPhyAddr, gatewayDeviceName, strlen(gatewayDeviceName)));
+	setTbToken(gatewayTbToken);
 }
 
-static void startBrokerMode()
+static void startGatewayMode()
 {
-	devType = BROKER;
+	devType = GATEWAY;
 	initCommonOpts();
 	retrieveClientListFromFile();
 	xMqttQueue = xQueueCreate(6, sizeof(struct MqttData));
 	xTaskCreate(mqttTask, "MQTT", 1536, NULL, 2, NULL);
-	printf("Starting broker mode\n");
+	printf("Starting gateway mode\n");
 }
 
 static void startClientMode()
 {
 	devType = CLIENT;
 	initCommonOpts();
-	xTaskCreate(setBrokerPlcPhyAddressTask, "BrokerAddr", 128, NULL, 2, NULL);
+	xTaskCreate(setGatewayPlcPhyAddressTask, "GatewayAddr", 128, NULL, 2, NULL);
 	printf("Starting client mode\n");
 }
 

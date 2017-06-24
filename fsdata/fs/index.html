@@ -17,7 +17,7 @@
         <div class="sub" align="center" id="status_box"></div>
         <hr width="60%" color="gray">
         <div class="sub" align="center">
-            <h2>Broker mode</h2>
+            <h2>Gateway mode</h2>
             <table class="table" cellspacing="10">
                 <tr>
                     <td><b>Target SSID:</b></td>
@@ -36,18 +36,18 @@
                 </tr>
                 <tr>
                     <td><b>Device name:</b></td>
-                    <td><input type="text" id="broker_device_name"></td>
-                    <td id="broker_device_name_alert" class="alert_td"></td>
+                    <td><input type="text" id="gateway_device_name"></td>
+                    <td id="gateway_device_name_alert" class="alert_td"></td>
                 </tr>
             </table>
-            <input type="button" id="wifi-opts" value="Set broker mode" onclick="setBrokerMode()">
+            <input type="button" id="wifi-opts" value="Set gateway mode" onclick="setGatewayMode()">
         </div>
         <hr width="60%" color="gray">
         <div class="sub" align="center">
             <h2>Client mode</h2>
             <table class="table" cellspacing="10">
                 <tr>
-                    <td><b>Broker PLC PHY Address:</b></td>
+                    <td><b>Gateway PLC PHY Address:</b></td>
                     <td><input type="text" id="plc_phy_addr"></td>
                     <td id="plc_phy_addr_alert" class="alert_td"></td>
                 </tr>
@@ -171,46 +171,46 @@
             }
         }
 
-        function setBrokerMode() {
-            var brokerCreds = new Object();
+        function setGatewayMode() {
+            var gatewayCreds = new Object();
             clearAlertMsgs();
-            brokerCreds.ssid = document.getElementById('ssid').value;
-            if (brokerCreds.ssid == "") {
+            gatewayCreds.ssid = document.getElementById('ssid').value;
+            if (gatewayCreds.ssid == "") {
                 setAlertMsg("WiFi SSID not provided.", 'ssid_alert');
                 return;
             }
-            if (brokerCreds.ssid.length > 32) {
+            if (gatewayCreds.ssid.length > 32) {
                 setAlertMsg("Wifi SSID too long.", 'ssid_alert');
                 return;
             }
-            brokerCreds.password = document.getElementById('password').value;
-            if (brokerCreds.password == "") {
+            gatewayCreds.password = document.getElementById('password').value;
+            if (gatewayCreds.password == "") {
                 setAlertMsg("WiFi password not provided.", 'password_alert');
                 return;
             }
-            if (brokerCreds.password.length > 64) {
+            if (gatewayCreds.password.length > 64) {
                 setAlertMsg("WiFi password too long.", 'password_alert');
                 return;
             }
-            brokerCreds.tb_token = document.getElementById('thingsboard_token').value;
-            if (brokerCreds.tb_token == "") {
+            gatewayCreds.tb_token = document.getElementById('thingsboard_token').value;
+            if (gatewayCreds.tb_token == "") {
                 setAlertMsg("Thinsgboard device token not provided.", 'thingsboard_token_alert');
                 return;
             }
-            if (brokerCreds.tb_token.length != 20) {
+            if (gatewayCreds.tb_token.length != 20) {
                 setAlertMsg("Thingsboard token must be 20 characters long.", 'thingsboard_token_alert');
                 return;
             }
-            brokerCreds.device_name = document.getElementById('broker_device_name').value;
-            if (brokerCreds.device_name == "") {
-                setAlertMsg("Device name not provided.", 'broker_device_name_alert');
+            gatewayCreds.device_name = document.getElementById('gateway_device_name').value;
+            if (gatewayCreds.device_name == "") {
+                setAlertMsg("Device name not provided.", 'gateway_device_name_alert');
                 return;
             }
-            if (brokerCreds.device_name.length > 32) {
-                setAlertMsg("Maximum length of device name must not exceed 32 characters.", 'broker_device_name_alert');
+            if (gatewayCreds.device_name.length > 32) {
+                setAlertMsg("Maximum length of device name must not exceed 32 characters.", 'gateway_device_name_alert');
                 return;
             }
-            var jsonString = JSON.stringify(brokerCreds);
+            var jsonString = JSON.stringify(gatewayCreds);
             console.log(jsonString);
             wsWrite(jsonString);
             disableButtons();
@@ -222,11 +222,11 @@
             clearAlertMsgs();
             clientCreds.phyaddr = document.getElementById('plc_phy_addr').value;
             if (clientCreds.phyaddr == "") {
-                setAlertMsg("Broker PLC physical address not provided.", 'plc_phy_addr_alert');
+                setAlertMsg("Gateway PLC physical address not provided.", 'plc_phy_addr_alert');
                 return;
             }
             if (clientCreds.phyaddr.length != 16) {
-                setAlertMsg("Broker PLC physical address must be 16 characters long", 'plc_phy_addr_alert');
+                setAlertMsg("Gateway PLC physical address must be 16 characters long", 'plc_phy_addr_alert');
                 return;
             }
             clientCreds.device_name = document.getElementById('client_device_name').value;

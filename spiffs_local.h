@@ -9,7 +9,7 @@
 struct ConfigData;
 
 extern const char clientStr[7];
-extern const char brokerStr[7];
+extern const char gatewayStr[7];
 
 int initFileSystem();
 

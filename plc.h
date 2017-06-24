@@ -226,6 +226,7 @@ extern TaskHandle_t xPLCTaskRcv;
 extern TaskHandle_t xPLCTaskSend;
 extern SemaphoreHandle_t xPLCSendSemaphore;
 
+// Poniższe funkcje pochodzą z artykułu AVT5490 - Elektronika Praktyczna
 uint8_t readPLCregister(uint8_t reg);
 void readPLCregisters(uint8_t reg, uint8_t *buf, uint32_t len);
 void writePLCregister(uint8_t reg, uint8_t val);
@@ -255,7 +256,7 @@ enum PlcErr sendPlcData(uint8_t *data,	uint8_t *phyAddr, TaskHandle_t taskToNoti
 	uint8_t command, uint8_t len);
 
 enum PlcErr registerClient(struct ConfigData *configData);
-void sendMeasurementDataToBrokerOverPLC(time_t ts, uint32_t *data, uint8_t len);	
+void sendMeasurementDataToGatewayOverPLC(time_t ts, uint32_t *data, uint8_t len);	
 void initPlcWithDelay();
 
 #endif
