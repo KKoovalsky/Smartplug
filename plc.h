@@ -138,7 +138,7 @@
 #define STATUS_RX_DATA_AVAILABLE (1 << 1)
 #define STATUS_TX_DATA_SENT (1 << 0)
 
-#define changeRelayState(X)
+#define changeRelayStateLocal(X) gpio_write(3, (X))
 
 #include <stdint.h>
 
@@ -165,12 +165,6 @@ enum PlcErr
 	PLC_ERR_NEW_SSID = 1,
 	PLC_ERR_NEW_PASSWORD = 2,
 	PLC_ERR_NEW_TB_TOKEN = 3
-};
-
-struct RelayStateChanger
-{
-	int requestNumber;
-	uint8_t deviceNumber, relayState;
 };
 
 #define PHY_ADDR 0x6A
@@ -250,7 +244,6 @@ void initPlcTask(void *pvParameters);
 void plcTaskRcv(void *pvParameters);
 void plcTaskSend(void *pvParameters);
 void registerNewClientTask(void *pvParameters);
-void changeRelayStateTask(void *pvParameters);
 
 enum PlcErr sendPlcData(uint8_t *data,	uint8_t *phyAddr, TaskHandle_t taskToNotify, 
 	uint8_t command, uint8_t len);
@@ -258,5 +251,6 @@ enum PlcErr sendPlcData(uint8_t *data,	uint8_t *phyAddr, TaskHandle_t taskToNoti
 enum PlcErr registerClient(struct ConfigData *configData);
 void sendMeasurementDataToGatewayOverPLC(time_t ts, uint32_t *data, uint8_t len);	
 void initPlcWithDelay();
+void changeRelayState(int deviceNumber, int relayState);
 
 #endif

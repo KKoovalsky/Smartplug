@@ -363,7 +363,7 @@ static inline void handleReceivedDataBasingOnCommandReceived()
 	case NEW_TELEMETRY_DATA:
 	{
 		struct MqttData td;
-		getPLCrxSA(td.gatewayPhyAddr);
+		getPLCrxSA(td.clientPhyAddr);
 		readPLCrxPacket(NULL, td.data, &td.len);
 		xQueueSend(xMqttQueue, &td, 0);
 		break;
@@ -372,7 +372,7 @@ static inline void handleReceivedDataBasingOnCommandReceived()
 	{
 		uint8_t relayState;
 		readPLCrxPacket(NULL, &relayState, NULL);
-		changeRelayState(relayState);
+		changeRelayStateLocal(relayState);
 		break;
 	}
 	}
@@ -550,38 +550,29 @@ enum PlcErr sendPlcData(uint8_t *data, uint8_t *phyAddr, TaskHandle_t taskToNoti
 	return result;
 }
 
-void changeRelayStateTask(void *pvParameters)
+void changeRelayState(int deviceNumber, int relayState)
 {
-	struct RelayStateChanger *relayStateChanger = (struct RelayStateChanger *)pvParameters;
-
-	if (relayStateChanger->deviceNumber != 1)
+	if (deviceNumber != 1)
 	{
 		struct Client *client = (struct Client *)clientListBegin;
 		int i = 1;
-		while (client && i != relayStateChanger->deviceNumber)
+		while (client && i != deviceNumber)
 		{
 			client = client->next;
 			i++;
 		}
 
 		if (!client)
-			vTaskDelete(NULL);
+			return;
 
-		enum PlcErr res = sendPlcData(&relayStateChanger->relayState, client->plcPhyAddr, xTaskGetCurrentTaskHandle(),
+		enum PlcErr res = sendPlcData((uint8_t *)&relayState, client->plcPhyAddr, xTaskGetCurrentTaskHandle(),
 								   CHANGE_RELAY_STATE, 1);
-
 		if (res == PLC_ERR_OK)
-			client->relayState = relayStateChanger->relayState;
+			client->relayState = relayState;
 	}
 	else
 	{
-		changeRelayState(relayStateChanger->relayState);
-		clientListBegin->relayState = relayStateChanger->relayState;
+		changeRelayStateLocal(relayState);
+		clientListBegin->relayState = relayState;
 	}
-
-	struct MqttData rpcResponse;
-	rpcResponse.len = sprintf((char *) rpcResponse.data, "%d", relayStateChanger->requestNumber);
-	rpcResponse.dataType = TYPE_GPIO_STATUS_GET;
-	xQueueSend(xMqttQueue, &rpcResponse, pdMS_TO_TICKS(20));
-	vTaskDelete(NULL);
 }

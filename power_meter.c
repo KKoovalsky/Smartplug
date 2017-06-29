@@ -25,7 +25,7 @@ static int getSSIPacket(uint8_t *buf, TickType_t *lastWakeTime);
 void getPowerTask(void *pvParameters)
 {
 	struct MqttData telemetryData;
-	memcpy(telemetryData.gatewayPhyAddr, (uint8_t *)clientListBegin->plcPhyAddr, 8);
+	memcpy(telemetryData.clientPhyAddr, (uint8_t *)clientListBegin->plcPhyAddr, 8);
 	telemetryData.dataType = TYPE_TELEMETRY;
 	const char commandGetPower[] = {0xA5, 0x07, 0x41, 0x00, 0x0A, 0x44, 0x3B};
 	int index = 0;
@@ -42,7 +42,9 @@ void getPowerTask(void *pvParameters)
 		if (len < 0)
 		{
 			printf("Error sending packet\n");
+			softuart_close(0);
 			vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(400));
+			softuart_open(0, 4800, RX_PIN, TX_PIN);
 		}
 		else if (len == 7)
 		{

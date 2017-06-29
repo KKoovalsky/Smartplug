@@ -42,7 +42,7 @@ static inline void fillJsonConnectionSuccessStringWithPlcPhyAddr(char *plcPhyAdd
 // TODO: Add makefile define NULL = THIS (when task self deletion use vTaskDelete(THIS) instead of vTaskDelete(NULL))
 void initDeviceByMode()
 {
-	char buffer[8];
+	char buffer[16];
 	getDeviceModeFromFile(buffer);
 
 	// Check if device is already configured as client or gateway, otherwise start HTTP server to get configuration.
@@ -161,7 +161,7 @@ static void setGatewayPlcPhyAddressTask(void *pvParameters)
 static void initCommonOpts()
 {
 	xTaskCreate(stationAndSntpStartup, "StartUp", 512, NULL, 4, NULL);
-	xTaskCreate(getPowerTask, "PowerGet", 512, NULL, 2, NULL);
+	//xTaskCreate(getPowerTask, "PowerGet", 512, NULL, 2, NULL);
 	
 	char gatewayDeviceName[33], gatewayPlcPhyAddr[17], gatewayTbToken[21];
 	getCredentialsFromFile(NULL, NULL, gatewayTbToken, gatewayPlcPhyAddr, gatewayDeviceName);

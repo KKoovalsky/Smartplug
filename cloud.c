@@ -16,20 +16,24 @@ QueueHandle_t xMqttQueue;
 const char telemetryTopic[] = "v1/gateway/telemetry";
 const char newDeviceTopic[] = "v1/gateway/connect";
 const char rpcTopicPrefix[] = "v1/devices/me/rpc/";
+const char attributesTopic[] = "v1/devices/me/attributes";
 #define rpcTopicResponse "v1/devices/me/rpc/response/"
 
-static inline int registerMqttClientsFromList(mqtt_client_t *mqttClient, mqtt_message_t *mqttMessage);
+static inline int registerMqttClientsFromList(mqtt_message_t *mqttMessage);
 static void mqttRpcReceived(mqtt_message_data_t *md);
-static inline void getNumberOfRequestInStringForm(uint8_t *dst, uint8_t *dstLen, char *src, int srcLen);
+static inline void getAndAppendRequestNumberToResponseTopic(char *responseTopicEnd, 
+		char *requestTopicEnd, int len);
 static inline enum RpcMethodType getRpcMethodType(mqtt_message_t *message);
 static inline int composeJsonFromRelayStateOnDevices(char *buf);
-inline struct RelayStateChanger *extractPinNumberAndStateFromJson(mqtt_message_t *message);
+inline int extractDeviceNumberAndStateFromJson(mqtt_message_t *message, int *deviceNumber, int *relayState);
+
+static volatile mqtt_client_t mqttClient = mqtt_client_default;
 
 void mqttTask(void *pvParameters)
 {
 	struct mqtt_network network;
-	mqtt_client_t client = mqtt_client_default;
-	uint8_t mqttBuf[128];
+
+	uint8_t mqttBuf[192];
 	uint8_t mqttReadBuf[128];
 	mqtt_packet_connect_data_t data = mqtt_packet_connect_data_initializer;
 
@@ -38,7 +42,7 @@ void mqttTask(void *pvParameters)
 	data.clientID.cstring = MQTT_ID;
 	data.username.cstring = (char *)tbToken;
 	data.password.cstring = MQTT_PASS;
-	data.keepAliveInterval = 10;
+	data.keepAliveInterval = 60;
 	data.cleansession = 0;
 
 	mqtt_message_t message;
@@ -46,110 +50,89 @@ void mqttTask(void *pvParameters)
 	message.qos = MQTT_QOS1;
 	message.retained = 0;
 
+	while (sdk_wifi_station_get_connect_status() != STATION_GOT_IP)
+		vTaskDelay(pdMS_TO_TICKS(200));
+
 	mqtt_network_new(&network);
 
-	int ret;
-
+	int ret = MQTT_SUCCESS;
 	while (1)
 	{
-		printf("Establishing MQTT connection...\n\r");
-		ret = mqtt_network_connect(&network, MQTT_HOST, MQTT_PORT);
 		if (ret != MQTT_SUCCESS)
 		{
-			printf("Error connecting to MQTT server: %d\n\r", ret);
-			vTaskDelay(pdMS_TO_TICKS(2000));
-			continue;
+			printf("MQTT Error: %d\n\r", ret);
+			mqtt_network_disconnect(&network);
+			vTaskDelay(pdMS_TO_TICKS(1000));
 		}
 
-		mqtt_client_new(&client, &network, 5000, mqttBuf, sizeof(mqttBuf), mqttReadBuf, sizeof(mqttReadBuf));
-		ret = mqtt_connect(&client, &data);
-		if (ret != MQTT_SUCCESS)
+		while (mqtt_network_connect(&network, MQTT_HOST, MQTT_PORT) != MQTT_SUCCESS)
 		{
-			printf("Error sending MQTT CONNECT: %d\n\r", ret);
-			mqtt_network_disconnect(&network);
-			continue;
+			printf("Error\n\r");
+			vTaskDelay(pdMS_TO_TICKS(500));
 		}
+		printf("Connected\n\r");
 
-		ret = registerMqttClientsFromList(&client, &message);
+		mqtt_client_new((mqtt_client_t *)&mqttClient, &network, 5000, mqttBuf,
+						sizeof(mqttBuf), mqttReadBuf, sizeof(mqttReadBuf));
+		ret = mqtt_connect((mqtt_client_t *)&mqttClient, &data);
 		if (ret != MQTT_SUCCESS)
-		{
-			printf("Error registering devices\n");
-			mqtt_network_disconnect(&network);
 			continue;
-		}
+		printf("CONNECT\n\r");
 
-		ret = mqtt_subscribe(&client, "v1/devices/me/rpc/request/+", MQTT_QOS1, mqttRpcReceived);
+		ret = mqtt_subscribe((mqtt_client_t *)&mqttClient, "v1/devices/me/rpc/request/+",
+							 MQTT_QOS1, mqttRpcReceived);
 		if (ret != MQTT_SUCCESS)
-		{
-			printf("Error occured while subscribing: %d\n", ret);
-			mqtt_network_disconnect(&network);
 			continue;
-		}
+		printf("Subscription\n\r");
+
+		char buf[192] = "";
+		message.payload = buf;
+		message.payloadlen = composeJsonFromRelayStateOnDevices(buf);
+		printf("Attributes: %s with len %d\n", buf, message.payloadlen);
+		ret = mqtt_publish((mqtt_client_t *)&mqttClient, attributesTopic, &message);
+		if (ret != MQTT_SUCCESS)
+			continue;
+		printf("Attributes\n\r");
+
+		ret = registerMqttClientsFromList(&message);
+		if (ret != MQTT_SUCCESS)
+			continue;
 
 		for (;;)
 		{
 			struct MqttData mqttData;
-			xQueueReceive(xMqttQueue, &mqttData, portMAX_DELAY);
-
-			char buf[128] = "";
-			message.payload = buf;
-			if (mqttData.dataType == TYPE_TELEMETRY)
+			while (xQueueReceive(xMqttQueue, &mqttData, 0) == pdTRUE)
 			{
-				char deviceName[33];
-				getDeviceNameByPlcPhyAddr(deviceName, mqttData.gatewayPhyAddr);
-				uint8_t *data = mqttData.data;
-				bool restart = false;
-				for (int i = 0; i < mqttData.len / 10; i++)
+				if (mqttData.dataType == TYPE_TELEMETRY)
 				{
-					message.payloadlen = composeJsonFromMqttData(buf, deviceName, data);
+					char deviceName[33];
+					getDeviceNameByPlcPhyAddr(deviceName, mqttData.clientPhyAddr);
+					message.payloadlen = composeJsonFromTelemetryData(buf, &mqttData);
+					message.payload = buf;
 					if (message.payloadlen > 0)
 					{
-						ret = mqtt_publish(&client, telemetryTopic, &message);
-						if (ret != MQTT_SUCCESS)
-						{
-							printf("Error while publishing message: %d\n\r", ret);
-							mqtt_network_disconnect(&network);
-							restart = true;
-							break;
-						}
+						ret = mqtt_publish((mqtt_client_t *)&mqttClient, telemetryTopic, &message);
+						printf("Telemetry: %s len %d\n", (char *)message.payload, message.payloadlen);
 					}
-					data += 10;
 				}
-				if (restart)
+				else if (mqttData.dataType == TYPE_NEW_DEVICE)
+				{
+					message.payloadlen = composeJsonFromNewDevice(buf);
+					message.payload = buf;
+					ret = mqtt_publish((mqtt_client_t *)&mqttClient, newDeviceTopic, &message);
+					printf("Payload: %s\n", (char *)message.payload);
+				}
+
+				if (ret != MQTT_SUCCESS)
 					break;
 			}
-			else if (mqttData.dataType == TYPE_NEW_DEVICE)
-			{
-				message.payloadlen = composeJsonFromNewDevice(buf);
-				ret = mqtt_publish(&client, newDeviceTopic, &message);
-				if (ret != MQTT_SUCCESS)
-				{
-					printf("Error while publishing message: %d\n\r", ret);
-					mqtt_network_disconnect(&network);
-					break;
-				}
-			}
-			else if (mqttData.dataType == TYPE_GPIO_STATUS_GET)
-			{
-				message.payloadlen = composeJsonFromRelayStateOnDevices(buf);
-				char topic[48] = rpcTopicResponse;
-				memcpy(topic + sizeof(rpcTopicResponse) - 1, mqttData.data, mqttData.len + 1);
-				ret = mqtt_publish(&client, topic, &message);
-				printf("Topic: %s payload: %.*s\n", topic, message.payloadlen, buf);
-				if (ret != MQTT_SUCCESS)
-				{
-					printf("Error -> get gpio status -> MQTT");
-					mqtt_network_disconnect(&network);
-					break;
-				}
-				ret = mqtt_publish(&client, "v1/devices/me/attributes", &message);
-				if (ret != MQTT_SUCCESS)
-				{
-					printf("Error -> get gpio status -> MQTT");
-					mqtt_network_disconnect(&network);
-					break;
-				}
-			}
+
+			if (ret != MQTT_SUCCESS)
+				break;
+
+			ret = mqtt_yield((mqtt_client_t *)&mqttClient, 300);
+			if (ret == MQTT_DISCONNECTED)
+				break;
 		}
 	}
 }
@@ -165,7 +148,7 @@ char *getTbToken()
 	return (char *)tbToken;
 }
 
-static inline int registerMqttClientsFromList(mqtt_client_t *mqttClient, mqtt_message_t *mqttMessage)
+static inline int registerMqttClientsFromList(mqtt_message_t *mqttMessage)
 {
 	char buf[52] = "{\"device\":\"";
 	int ret = MQTT_FAILURE;
@@ -174,7 +157,7 @@ static inline int registerMqttClientsFromList(mqtt_client_t *mqttClient, mqtt_me
 	{
 		mqttMessage->payloadlen = sprintf(buf + firstTxtLen, "%s\"}", client->deviceName) + firstTxtLen;
 		mqttMessage->payload = buf;
-		ret = mqtt_publish(mqttClient, newDeviceTopic, mqttMessage);
+		ret = mqtt_publish((mqtt_client_t *)&mqttClient, newDeviceTopic, mqttMessage);
 		if (ret != MQTT_SUCCESS)
 			break;
 		else
@@ -186,58 +169,47 @@ static inline int registerMqttClientsFromList(mqtt_client_t *mqttClient, mqtt_me
 static void mqttRpcReceived(mqtt_message_data_t *md)
 {
 	mqtt_message_t *message = md->message;
-
-	printf("Got on topic: %.*s ", md->topic->lenstring.len, (char *)md->topic->lenstring.data);
-	printf("data: %.*s\n", message->payloadlen, (char *)message->payload);
-
 	char *topicItr = md->topic->lenstring.data + sizeof(rpcTopicPrefix) - 1;
 	const char requestStr[] = "request";
 	if (!strncmp(topicItr, requestStr, sizeof(requestStr) - 1))
 	{
 		topicItr += sizeof(requestStr);
-		struct MqttData rpcData;
-		getNumberOfRequestInStringForm(rpcData.data, &rpcData.len, topicItr,
-									   md->topic->lenstring.len - (topicItr - md->topic->lenstring.data));
-		printf("Request: %s len %d\n", rpcData.data, rpcData.len);
+		char topic[48] = rpcTopicResponse;
+		getAndAppendRequestNumberToResponseTopic(topic + sizeof(rpcTopicResponse) - 1, topicItr,
+												 md->topic->lenstring.len - (topicItr - md->topic->lenstring.data));
 
 		enum RpcMethodType methodType = getRpcMethodType(message);
-		if (methodType == GET_GPIO_STATUS)
+		if (methodType == SET_GPIO_STATUS)
 		{
-			rpcData.dataType = TYPE_GPIO_STATUS_GET;
-			xQueueSend(xMqttQueue, &rpcData, 0);
+			int deviceNumber, relayState;
+			if (extractDeviceNumberAndStateFromJson(message, &deviceNumber, &relayState) >= 0)
+				changeRelayState(deviceNumber, relayState);
 		}
-		else if (methodType == SET_GPIO_STATUS)
+
+		mqtt_message_t responseMsg;
+		responseMsg.dup = 0;
+		responseMsg.qos = MQTT_QOS1;
+		responseMsg.retained = 0;
+		char buf[128];
+		responseMsg.payloadlen = composeJsonFromRelayStateOnDevices(buf);
+		responseMsg.payload = buf;
+
+		int ret = mqtt_publish((mqtt_client_t *)&mqttClient, topic, &responseMsg);
+		if (ret == MQTT_SUCCESS)
 		{
-			struct RelayStateChanger *r = extractPinNumberAndStateFromJson(message);
-			if (r)
-			{
-				r->requestNumber = atoi((char *)rpcData.data);
-				xTaskCreate(changeRelayStateTask, "Change GPIO", 256, (void *)r, 3, NULL);
-			} else
-				printf("JSON parsing fail in extract\n");
+			ret = mqtt_publish((mqtt_client_t *)&mqttClient, attributesTopic, &responseMsg);
+			if (ret != MQTT_SUCCESS)
+				printf("Error on RPC attributes\n");
+			else
+				printf("RPC publishing OK\n");
 		}
 		else
-			printf("JSON parsing failed\n");
+			printf("Error on RPC response\n");
 	}
-}
-
-static inline void getNumberOfRequestInStringForm(uint8_t *dst, uint8_t *dstLen, char *src, int srcLen)
-{
-	memcpy(dst, src, srcLen);
-	dst[srcLen] = '\0';
-	*dstLen = srcLen;
 }
 
 static inline enum RpcMethodType getRpcMethodType(mqtt_message_t *message)
 {
-	/*
-	jsmn_parser jsmnParser;
-	jsmntok_t t[4];
-	jsmn_init(&jsmnParser);
-	int r = jsmn_parse(&jsmnParser, message->payload, message->payloadlen, t, sizeof(t) / sizeof(t[0]));
-	if (r < 0)
-		return NO_METHOD;
-	*/
 	const char getGpioStatusMethodName[] = "getGpioStatus";
 	const char setGpioStatusMethodName[] = "setGpioStatus";
 
@@ -254,30 +226,32 @@ static inline int composeJsonFromRelayStateOnDevices(char *buf)
 	int i = 1, index = 1;
 	*buf = '{';
 	for (struct Client *client = (struct Client *)clientListBegin; client; client = client->next, i++)
-		index += sprintf(buf + index, "\"%d\":%s,", i, client->relayState ? "true" : "false");
-
+		index += sprintf(buf + index, "\"%d\": %s,", i, client->relayState ? "true" : "false");
 	*(buf + index - 1) = '}';
 	return index;
 }
 
-inline struct RelayStateChanger *extractPinNumberAndStateFromJson(mqtt_message_t *message)
+inline int extractDeviceNumberAndStateFromJson(mqtt_message_t *message, int *deviceNumber, int *relayState)
 {
 	jsmn_parser jsmnParser;
 	jsmntok_t t[10];
 	jsmn_init(&jsmnParser);
 	int r = jsmn_parse(&jsmnParser, message->payload, message->payloadlen, t, sizeof(t) / sizeof(t[0]));
 	if (r < 0)
-		return NULL;
+		return -1;
 
-	struct RelayStateChanger *relayStateChanger =
-		(struct RelayStateChanger *)pvPortMalloc(sizeof(struct RelayStateChanger));
-	
 	char deviceNumberInStringForm[4];
 	int deviceNumberInStringFormLen = t[6].end - t[6].start;
 	memcpy(deviceNumberInStringForm, message->payload + t[6].start, deviceNumberInStringFormLen);
 	deviceNumberInStringForm[deviceNumberInStringFormLen] = '\0';
-	relayStateChanger->deviceNumber = (uint8_t)atoi(deviceNumberInStringForm);
+	*deviceNumber = (uint8_t)atoi(deviceNumberInStringForm);
+	*relayState = (!strncmp(message->payload + t[8].start, "true", sizeof("true") - 1 ? 1 : 0));
+	return 0;
+}
 
-	relayStateChanger->relayState = (!strncmp(message->payload + t[8].start, "true", sizeof("true") - 1 ? 1 : 0));
-	return relayStateChanger;
+static inline void getAndAppendRequestNumberToResponseTopic(char *responseTopicEnd, 
+		char *requestTopicEnd, int len)
+{
+	memcpy(responseTopicEnd, requestTopicEnd, len);
+	*(responseTopicEnd + len) = '\0';
 }

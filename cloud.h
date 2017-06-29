@@ -20,7 +20,7 @@
 struct MqttData
 {
 	uint8_t data[32];
-	uint8_t gatewayPhyAddr[8];
+	uint8_t clientPhyAddr[8];
 	uint8_t dataType;
 	uint8_t len;
 };

@@ -14,6 +14,7 @@
 #include "system.h"
 #include "cloud.h"
 #include "sntp_sync.h"
+#include "private_credentials.h"
 
 #define SCL_PIN 5
 #define SDA_PIN 4
@@ -40,11 +41,20 @@ void user_init(void)
 {
 	uart_set_baud(0, 74880);
 	printf("SDK version:%s\n", sdk_system_get_sdk_version());
-
+	gpio_enable(3, GPIO_OUTPUT);
+	gpio_write(3, 0);
 	i2c_init(SCL_PIN, SDA_PIN);
 
 	sdk_wifi_station_set_auto_connect(0);
 
+	/*
+	struct sdk_station_config config = {
+		.ssid = STATION_SSID,
+		.password = STATION_PASSWD,
+	};
+	sdk_wifi_set_opmode(STATION_MODE);
+	sdk_wifi_station_set_config(&config);
+	*/
 	xPLCSendSemaphore = xSemaphoreCreateMutex();
 
 	initFileSystem();
